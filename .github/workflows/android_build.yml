@@ -10,6 +10,8 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Diperlukan untuk membuat rilis
     
     steps:
       - name: Checkout code
@@ -50,10 +52,12 @@ jobs:
           path: dobby_release/
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: "build-${{ github.run_number }}"
+          name: "Dobby Android Build #${{ github.run_number }}"
           files: dobby-android-release.zip
           generate_release_notes: true
           draft: false
           prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
