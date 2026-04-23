@@ -31,7 +31,7 @@ jobs:
 
       - name: Build All Android ABIs
         run: |
-          python3 scripts/platform_builder.py --platform android --arch all
+          python3 scripts/platform_builder.py --platform android --arch all --ndk ${{ steps.setup-ndk.outputs.ndk-path }}
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
