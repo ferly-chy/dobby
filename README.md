@@ -1,23 +1,15 @@
-## Dobby
+## Dobby-Fork android
 
-[![Contact me Telegram](https://img.shields.io/badge/Contact%20me-Telegram-blue.svg)](https://t.me/IOFramebuffer) [![Join group Telegram](https://img.shields.io/badge/Join%20group-Telegram-brightgreen.svg)](https://t.me/dobby_group)
-
-Dobby a lightweight, multi-platform, multi-architecture exploit hook framework.
+Dobby a lightweight exploit hook framework.
 
 - Minimal and modular library
-- Multi-platform support(Windows/macOS/iOS/Android/Linux)
+- Android only!
 - Multiple architecture support(X86, X86-64, ARM, ARM64)
 
-## Compile
-
-[docs/compile.md](docs/compile.md)
-
 ## Download
-
-[download latest library](https://github.com/jmpews/Dobby/releases/tag/latest)
+[download latest library](https://github.com/ferly-chy/dobby/releases)
 
 ## Credits
-
 1. [frida-gum](https://github.com/frida/frida-gum)
 2. [minhook](https://github.com/TsudaKageyu/minhook)
 3. [substrate](https://github.com/jevinskie/substrate).
