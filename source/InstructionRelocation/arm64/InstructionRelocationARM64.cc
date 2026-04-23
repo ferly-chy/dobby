@@ -1,149 +1,362 @@
-#include "InstructionRelocation/InstructionRelocator.h"
 #include "platform_detect_macro.h"
 
 #if defined(TARGET_ARCH_ARM64)
 
 #include "InstructionRelocation/arm64/InstructionRelocationARM64.h"
+
 #include "dobby/dobby_internal.h"
-#include "PlatformUnifiedInterface/platform.h"
+
 #include "core/arch/arm64/registers-arm64.h"
 #include "core/assembler/assembler-arm64.h"
 #include "core/codegen/codegen-arm64.h"
+
 #include "inst_constants.h"
 #include "inst_decode_encode_kit.h"
 
 using namespace zz::arm64;
 
-namespace dobby {
+#if defined(DOBBY_DEBUG)
+#define debug_nop() _ nop()
+#else
+#define debug_nop()
+#endif
 
-struct relo_ctx_t {
-  addr_t cursor;
-  std::span<const uint8_t> input_code;
-  TurboAssembler *turbo_assembler;
+#define arm64_trunc_page(x) ((x) & (~(0x1000 - 1)))
+#define arm64_round_page(x) trunc_page((x) + (0x1000 - 1))
 
-  relo_ctx_t(addr_t src, std::span<const uint8_t> code, TurboAssembler *ta) 
-    : cursor(src), input_code(code), turbo_assembler(ta) {}
+typedef struct {
+  addr_t mapped_addr;
 
-  uint32_t relo_size() const { return cursor - (addr_t)input_code.data(); } // This is wrong, should track relative to start
-};
+  uint8_t *buffer;
+  uint8_t *buffer_cursor;
+  size_t buffer_size;
 
-// Fixed context tracker
-struct ReloContext {
-  addr_t src_base;
-  std::span<const uint8_t> input;
-  uint32_t offset;
-  TurboAssembler *as;
+  addr_t src_vmaddr;
+  addr_t dst_vmaddr;
 
-  ReloContext(addr_t src, std::span<const uint8_t> code, TurboAssembler *ta) 
-    : src_base(src), input(code), offset(0), as(ta) {}
+  CodeMemBlock *origin;
+  CodeMemBlock *relocated;
 
-  addr_t cur_src_addr() const { return src_base + offset; }
-  const uint8_t* cur_input_ptr() const { return input.data() + offset; }
-  bool has_more() const { return offset < input.size(); }
-};
+  tinystl::unordered_map<off_t, off_t> relocated_offset_map;
 
-#undef _
-#define _ ctx.as->
+  tinystl::unordered_map<addr_t, AssemblerPseudoLabel *> label_map;
 
-static inline bool inst_is_b_bl(uint32_t instr) { return (instr & UnconditionalBranchFixedMask) == UnconditionalBranchFixed; }
-static inline bool inst_is_ldr_literal(uint32_t instr) { return ((instr & LoadRegLiteralFixedMask) == LoadRegLiteralFixed); }
-static inline bool inst_is_adr(uint32_t instr) { return (instr & PCRelAddressingFixedMask) == PCRelAddressingFixed && (instr & PCRelAddressingMask) == ADR; }
-static inline bool inst_is_adrp(uint32_t instr) { return (instr & PCRelAddressingFixedMask) == PCRelAddressingFixed && (instr & PCRelAddressingMask) == ADRP; }
-static inline bool inst_is_b_cond(uint32_t instr) { return (instr & ConditionalBranchFixedMask) == ConditionalBranchFixed; }
-static inline bool inst_is_compare_b(uint32_t instr) { return (instr & CompareBranchFixedMask) == CompareBranchFixed; }
-static inline bool inst_is_test_b(uint32_t instr) { return (instr & TestBranchFixedMask) == TestBranchFixed; }
+} relo_ctx_t;
 
-InstructionRelocator::RelocationResult InstructionRelocator::RelocateARM64(addr_t src, std::span<const uint8_t> code, addr_t dst, bool branch) {
-  TurboAssembler turbo_assembler(dst);
-  ReloContext ctx(src, code, &turbo_assembler);
+// ---
 
-  while (ctx.has_more()) {
-    uint32_t inst = *(uint32_t *)ctx.cur_input_ptr();
-    addr_t cur_addr = ctx.cur_src_addr();
-    
+addr_t relo_cur_src_vmaddr(relo_ctx_t *ctx) {
+  return ctx->src_vmaddr + (ctx->buffer_cursor - ctx->buffer);
+}
+
+addr_t relo_cur_dst_vmaddr(relo_ctx_t *ctx, TurboAssembler *assembler) {
+  return ctx->dst_vmaddr + assembler->GetCodeBuffer()->GetBufferSize();
+}
+
+addr_t relo_src_offset_to_vmaddr(relo_ctx_t *ctx, off_t offset) {
+  return ctx->src_vmaddr + offset;
+}
+
+addr_t relo_dst_offset_to_vmaddr(relo_ctx_t *ctx, off_t offset) {
+  return ctx->dst_vmaddr + offset;
+}
+
+// ---
+
+#if 0
+bool has_relo_label_at(relo_ctx_t *ctx, addr_t addr) {
+  if (ctx->label_map.count(addr)) {
+    return true;
+  }
+  return false;
+}
+
+AssemblerPseudoLabel *relo_label_create_or_get(relo_ctx_t *ctx, addr_t addr) {
+  if (!ctx->label_map.count(addr)) {
+    auto *label = new AssemblerPseudoLabel(addr);
+    ctx->label_map[addr] = label;
+  }
+  return ctx->label_map[addr];
+}
+
+int64_t relo_label_link_offset(relo_ctx_t *ctx, pcrel_type_t pcrel_type, int64_t offset) {
+  auto is_offset_undefined = [ctx](int64_t offset) -> bool {
+    if (ctx->buffer_cursor + offset < ctx->buffer || ctx->buffer_cursor + offset > ctx->buffer + ctx->buffer_size) {
+      return true;
+    }
+    return false;
+  };
+
+  auto is_offset_uninitialized = [ctx](int64_t offset) -> bool {
+    if (ctx->buffer_cursor + offset > ctx->buffer && ctx->buffer_cursor + offset < ctx->buffer + ctx->buffer_size) {
+      if (!ctx->relocated_offset_map.count(ctx->buffer_cursor + offset - ctx->buffer_cursor))
+        return true;
+    }
+    return false;
+  };
+
+  addr_t label_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+  if (pcrel_type == RELO_ARM64_RELOC_PAGE21) {
+    label_vmaddr = arm64_trunc_page(label_vmaddr);
+  }
+
+  auto *label = relo_label_create_or_get(ctx, label_vmaddr);
+  if (is_offset_undefined(offset)) { // pc relative target is beyond our scope
+    label->link_to(AssemblerPseudoLabel::kLabelImm19, relo_cur_src_vmaddr(ctx), (addr_t)ctx->buffer_cursor - ctx->mapped_addr);
+    return 0;
+  } else if (is_offset_uninitialized(offset)) { // pc relative target is in our control, but not handle yet
+    label->link_to(AssemblerPseudoLabel::kLabelImm19, relo_cur_src_vmaddr(ctx), (addr_t)ctx->buffer_cursor - ctx->mapped_addr);
+    return 0;
+  } else { // pc relative target is already handled
+    off_t off = ctx->buffer_cursor + offset - ctx->buffer;
+    off_t relocated_off = label->pos();
+    int64_t new_offset = relo_dst_offset_to_vmaddr(ctx, relocated_off) - relo_src_offset_to_vmaddr(ctx, off);
+    return new_offset;
+  }
+}
+#endif
+
+// ---
+
+static inline bool inst_is_b_bl(uint32_t instr) {
+  return (instr & UnconditionalBranchFixedMask) == UnconditionalBranchFixed;
+}
+
+static inline bool inst_is_ldr_literal(uint32_t instr) {
+  return ((instr & LoadRegLiteralFixedMask) == LoadRegLiteralFixed);
+}
+
+static inline bool inst_is_adr(uint32_t instr) {
+  return (instr & PCRelAddressingFixedMask) == PCRelAddressingFixed && (instr & PCRelAddressingMask) == ADR;
+}
+
+static inline bool inst_is_adrp(uint32_t instr) {
+  return (instr & PCRelAddressingFixedMask) == PCRelAddressingFixed && (instr & PCRelAddressingMask) == ADRP;
+}
+
+static inline bool inst_is_b_cond(uint32_t instr) {
+  return (instr & ConditionalBranchFixedMask) == ConditionalBranchFixed;
+}
+
+static inline bool inst_is_compare_b(uint32_t instr) {
+  return (instr & CompareBranchFixedMask) == CompareBranchFixed;
+}
+
+static inline bool inst_is_test_b(uint32_t instr) {
+  return (instr & TestBranchFixedMask) == TestBranchFixed;
+}
+
+// ---
+
+int relo_relocate(relo_ctx_t *ctx, bool branch) {
+  int relocated_insn_count = 0;
+
+  TurboAssembler turbo_assembler_(0);
+#define _ turbo_assembler_.
+
+  auto relocated_buffer = turbo_assembler_.GetCodeBuffer();
+
+  while (ctx->buffer_cursor < ctx->buffer + ctx->buffer_size) {
+    uint32_t orig_off = ctx->buffer_cursor - ctx->buffer;
+    uint32_t relocated_off = relocated_buffer->GetBufferSize();
+    ctx->relocated_offset_map[orig_off] = relocated_off;
+
+#if 0
+    addr_t inst_vmaddr = 0;
+    inst_vmaddr = relo_cur_src_vmaddr(ctx);
+    if (has_relo_label_at(ctx, inst_vmaddr)) {
+      auto *label = relo_label_create_or_get(ctx, inst_vmaddr);
+      label->bind_to(inst_vmaddr);
+    }
+#endif
+
+    arm64_inst_t inst = *(arm64_inst_t *)ctx->buffer_cursor;
     if (inst_is_b_bl(inst)) {
+      DEBUG_LOG("{}:relo <b_bl> at {:p}", relocated_insn_count++, (void *)relo_cur_src_vmaddr(ctx));
+
       int64_t offset = decode_imm26_offset(inst);
-      addr_t target = cur_addr + offset;
-      auto data_label = turbo_assembler.createDataLabel(target);
-      _ Ldr(TMP_REG_0, data_label);
-      if ((inst & UnconditionalBranchMask) == BL) {
-        _ blr(TMP_REG_0);
-      } else {
-        _ br(TMP_REG_0);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      auto dst_label = RelocLabel::withData(dst_vmaddr);
+      _ AppendRelocLabel(dst_label);
+
+      {
+        _ Ldr(TMP_REG_0, dst_label);
+        if ((inst & UnconditionalBranchMask) == BL) {
+          _ blr(TMP_REG_0);
+        } else {
+          _ br(TMP_REG_0);
+        }
       }
+
     } else if (inst_is_ldr_literal(inst)) {
+      DEBUG_LOG("{}:relo <ldr_literal> at {:p}", relocated_insn_count++, (void *)relo_cur_src_vmaddr(ctx));
+
       int64_t offset = decode_imm19_offset(inst);
-      addr_t target = cur_addr + offset;
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
       int rt = decode_rt(inst);
       char opc = bits(inst, 30, 31);
-      _ Mov(TMP_REG_0, target);
-      if (opc == 0b00) _ ldr(W(rt), MemOperand(TMP_REG_0, 0));
-      else if (opc == 0b01) _ ldr(X(rt), MemOperand(TMP_REG_0, 0));
-    } else if (inst_is_adr(inst)) {
-      int64_t offset = decode_immhi_immlo_offset(inst);
-      addr_t target = cur_addr + offset;
-      _ Mov(X(decode_rd(inst)), target);
-    } else if (inst_is_adrp(inst)) {
-      int64_t offset = decode_immhi_immlo_zero12_offset(inst);
-      uintptr_t page_mask = ~(uintptr_t)(OSMemory::PageSize() - 1);
-      addr_t target = (cur_addr & page_mask) + offset;
-      _ Mov(X(decode_rd(inst)), target);
-    } else if (inst_is_b_cond(inst) || inst_is_compare_b(inst) || inst_is_test_b(inst)) {
-      int64_t offset = 0;
-      uint32_t branch_inst = inst;
-      if (inst_is_b_cond(inst)) {
-        offset = decode_imm19_offset(inst);
-        char cond = (char)(bits(inst, 0, 3) ^ 1);
-        set_bits(branch_inst, 0, 3, cond);
-        set_bits(branch_inst, 5, 23, (4 * 3) >> 2);
-      } else if (inst_is_compare_b(inst)) {
-        offset = decode_imm19_offset(inst);
-        char op = (char)(bit(inst, 24) ^ 1);
-        set_bit(branch_inst, 24, op);
-        set_bits(branch_inst, 5, 23, (4 * 3) >> 2);
-      } else if (inst_is_test_b(inst)) {
-        offset = decode_imm14_offset(inst);
-        char op = (char)(bit(inst, 24) ^ 1);
-        set_bit(branch_inst, 24, op);
-        set_bits(branch_inst, 5, 18, (4 * 3) >> 2);
+
+      {
+        _ Mov(TMP_REG_0, dst_vmaddr);
+        if (opc == 0b00)
+          _ ldr(W(rt), MemOperand(TMP_REG_0, 0));
+        else if (opc == 0b01)
+          _ ldr(X(rt), MemOperand(TMP_REG_0, 0));
+        else {
+          UNIMPLEMENTED();
+        }
       }
-      addr_t target = cur_addr + offset;
-      auto data_label = turbo_assembler.createDataLabel(target);
-      _ Emit(branch_inst);
-      _ Ldr(TMP_REG_0, data_label);
-      _ br(TMP_REG_0);
+    } else if (inst_is_adr(inst)) {
+      DEBUG_LOG("{}:relo <adr> at {:p}", relocated_insn_count++, (void *)relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_immhi_immlo_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      int rd = decode_rd(inst);
+
+      {
+        _ Mov(X(rd), dst_vmaddr);
+        ;
+      }
+    } else if (inst_is_adrp(inst)) {
+      DEBUG_LOG("{}:relo <adrp> at {:p}", relocated_insn_count++, (void *)relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_immhi_immlo_zero12_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+      dst_vmaddr = arm64_trunc_page(dst_vmaddr);
+
+      int rd = decode_rd(inst);
+
+      {
+        _ Mov(X(rd), dst_vmaddr);
+        ;
+      }
+    } else if (inst_is_b_cond(inst)) {
+      DEBUG_LOG("{}:relo <b_cond> at {:p}", relocated_insn_count++, (void *)relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_imm19_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      arm64_inst_t branch_instr = inst;
+      {
+        char cond = bits(inst, 0, 3);
+        cond = cond ^ 1;
+        set_bits(branch_instr, 0, 3, cond);
+
+        int64_t offset = 4 * 3;
+        uint32_t imm19 = offset >> 2;
+        set_bits(branch_instr, 5, 23, imm19);
+      }
+
+      auto dst_label = RelocLabel::withData(dst_vmaddr);
+      _ AppendRelocLabel(dst_label);
+
+      {
+        _ Emit(branch_instr);
+        {
+          _ Ldr(TMP_REG_0, dst_label);
+          _ br(TMP_REG_0);
+        }
+      }
+    } else if (inst_is_compare_b(inst)) {
+      DEBUG_LOG("{}:relo <compare_b> at {:p}", relocated_insn_count++, (void *)relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_imm19_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      arm64_inst_t branch_instr = inst;
+      {
+        char op = bit(inst, 24);
+        op = op ^ 1;
+        set_bit(branch_instr, 24, op);
+
+        int64_t offset = 4 * 3;
+        uint32_t imm19 = offset >> 2;
+        set_bits(branch_instr, 5, 23, imm19);
+      }
+
+      auto dst_label = RelocLabel::withData(dst_vmaddr);
+      _ AppendRelocLabel(dst_label);
+
+      {
+        _ Emit(branch_instr);
+        {
+          _ Ldr(TMP_REG_0, dst_label);
+          _ br(TMP_REG_0);
+        }
+      }
+    } else if (inst_is_test_b(inst)) {
+      DEBUG_LOG("{}:relo <test_b> at {:p}", relocated_insn_count++, (void *)relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_imm14_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      arm64_inst_t branch_instr = inst;
+      {
+        char op = bit(inst, 24);
+        op = op ^ 1;
+        set_bit(branch_instr, 24, op);
+
+        int64_t offset = 4 * 3;
+        uint32_t imm14 = offset >> 2;
+        set_bits(branch_instr, 5, 18, imm14);
+      }
+
+      auto dst_label = RelocLabel::withData(dst_vmaddr);
+      _ AppendRelocLabel(dst_label);
+
+      {
+        _ Emit(branch_instr);
+        {
+          _ Ldr(TMP_REG_0, dst_label);
+          _ br(TMP_REG_0);
+        }
+      }
     } else {
       _ Emit(inst);
     }
-    ctx.offset += 4;
-  }
 
+    ctx->buffer_cursor += sizeof(arm64_inst_t);
+  }
+#undef _
+
+  // update origin
+  int new_origin_len = (addr_t)ctx->buffer_cursor - (addr_t)ctx->buffer;
+  ctx->origin->reset(ctx->origin->addr, new_origin_len);
+
+  // TODO: if last instr is unlink branch, ignore it
   if (branch) {
-    CodeGen codegen(&turbo_assembler);
-    codegen.LiteralLdrBranch(ctx.cur_src_addr());
+    CodeGen codegen(&turbo_assembler_);
+    codegen.LiteralLdrBranch(ctx->origin->addr + ctx->origin->size);
   }
 
-  turbo_assembler.relocDataLabels();
-  
-  // Extract bytes WITHOUT permanent execution memory allocation
-  auto code_buffer = turbo_assembler.code_buffer();
-  std::vector<uint8_t> relocated_code(code_buffer->data(), code_buffer->data() + code_buffer->size());
-  
-  return {relocated_code, ctx.offset, dst};
+  // Bind all labels
+  turbo_assembler_.RelocBind();
+
+  // Generate executable code
+  {
+    auto code = AssemblyCodeBuilder::FinalizeFromTurboAssembler(&turbo_assembler_);
+    ctx->relocated = code;
+  }
+  return 0;
 }
 
-} // namespace dobby
-
 void GenRelocateCode(void *buffer, CodeMemBlock *origin, CodeMemBlock *relocated, bool branch) {
-  auto result = dobby::InstructionRelocator::Relocate((addr_t)origin->addr(), 
-                                                     std::span((const uint8_t*)origin->addr(), origin->size),
-                                                     (addr_t)buffer, branch);
-  
-  // Legacy API expects code to be WRITTEN to buffer
-  DobbyCodePatch(buffer, result.code.data(), result.code.size());
-  
-  relocated->start_ = (addr_t)buffer;
-  relocated->size = result.code.size();
+  relo_ctx_t ctx = {0};
+
+  ctx.buffer = ctx.buffer_cursor = (uint8_t *)buffer;
+  ctx.buffer_size = origin->size;
+
+  ctx.src_vmaddr = (addr_t)origin->addr;
+  ctx.dst_vmaddr = (addr_t)relocated->addr;
+
+  ctx.origin = origin;
+
+  relo_relocate(&ctx, branch);
+
+  relocated->reset(ctx.relocated->addr, ctx.relocated->size);
 }
 
 void GenRelocateCodeAndBranch(void *buffer, CodeMemBlock *origin, CodeMemBlock *relocated) {

@@ -37,26 +37,21 @@ jobs:
 
       - name: Distribute Artifacts
         run: |
-          # Menggabungkan semua build (static & shared) ke dalam satu paket rilis
-          python3 scripts/distribute.py --type both --out dobby_release
-
-      - name: Archive Release (Zip)
-        run: |
-          # Membuat file zip untuk aset rilis
-          zip -r dobby-android-release.zip dobby_release/
+          # Menggabungkan semua build (static & shared) ke dalam zip dobby-distribution.zip
+          python3 scripts/distribute.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: dobby-android-release
-          path: dobby_release/
+          name: dobby-distribution
+          path: dist
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "build-${{ github.run_number }}"
           name: "Dobby Android Build #${{ github.run_number }}"
-          files: dobby-android-release.zip
+          files: dobby-distribution.zip
           generate_release_notes: true
           draft: false
           prerelease: false

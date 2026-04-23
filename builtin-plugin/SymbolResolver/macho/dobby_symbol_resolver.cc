@@ -7,7 +7,7 @@
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
 
-#include "PlatformUtil/ProcessRuntime.h"
+#include "PlatformUtil/ProcessRuntimeUtility.h"
 
 #include "macho_ctx.h"
 #include "shared_cache_ctx.h"
@@ -22,7 +22,7 @@
 
 PUBLIC void *DobbySymbolResolver(const char *image_name, const char *symbol_name_pattern) {
   uintptr_t result = 0;
-  auto modules = ProcessRuntime::getModuleMap();
+  auto modules = ProcessRuntimeUtility::GetProcessModuleMap();
 
   for (auto iter = modules.begin(); iter != modules.end(); iter++) {
     auto module = *iter;
@@ -36,12 +36,12 @@ PUBLIC void *DobbySymbolResolver(const char *image_name, const char *symbol_name
     if (!image_name && strstr(module.path, "dyld"))
       continue;
 
-    auto header = (mach_header_t *)module.base;
+    auto header = (mach_header_t *)module.load_address;
     if (header == nullptr)
       continue;
 
 #if 0
-    DEBUG_LOG("resolve image: %s", module.path);
+    DEBUG_LOG("resolve image: {}", module.path);
 #endif
 
     nlist_t *symtab = NULL;
@@ -107,7 +107,7 @@ PUBLIC void *DobbySymbolResolver(const char *image_name, const char *symbol_name
 #endif
 
   if (result == 0) {
-    DEBUG_LOG("symbol resolver failed: %s", symbol_name_pattern);
+    DEBUG_LOG("symbol resolver failed: {}", symbol_name_pattern);
   }
 
   return (void *)result;

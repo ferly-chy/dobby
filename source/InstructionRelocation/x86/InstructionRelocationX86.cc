@@ -1,4 +1,3 @@
-#include "InstructionRelocation/InstructionRelocator.h"
 #include "platform_detect_macro.h"
 
 #if defined(TARGET_ARCH_IA32)
@@ -17,12 +16,12 @@ using namespace zz::x86;
 int GenRelocateCodeFixed(void *buffer, CodeMemBlock *origin, CodeMemBlock *relocated, bool branch) {
   TurboAssembler turbo_assembler_(0);
   // Set fixed executable code chunk address
-  turbo_assembler_.SetRealizedAddress((void *)relocated->addr());
+  turbo_assembler_.SetRealizedAddress((void *)relocated->addr);
 #define _ turbo_assembler_.
-#define __ turbo_assembler_.code_buffer()->
+#define __ turbo_assembler_.GetCodeBuffer()->
 
-  auto curr_orig_ip = (addr32_t)origin->addr();
-  auto curr_relo_ip = (addr32_t)relocated->addr();
+  auto curr_orig_ip = (addr32_t)origin->addr;
+  auto curr_relo_ip = (addr32_t)relocated->addr;
 
   uint8_t *buffer_cursor = (uint8_t *)buffer;
 
@@ -35,26 +34,25 @@ int GenRelocateCodeFixed(void *buffer, CodeMemBlock *origin, CodeMemBlock *reloc
     x86_insn_decode_t insn = {0};
     memset(&insn, 0, sizeof(insn));
     GenRelocateSingleX86Insn(curr_orig_ip, curr_relo_ip, buffer_cursor, &turbo_assembler_,
-                             turbo_assembler_.code_buffer(), insn, 64);
+                             turbo_assembler_.GetCodeBuffer(), insn, 64);
 
     // go next
     curr_orig_ip += insn.length;
     buffer_cursor += insn.length;
-    curr_relo_ip = (addr32_t)relocated->addr() + turbo_assembler_.ip_offset();
+    curr_relo_ip = (addr32_t)relocated->addr + turbo_assembler_.ip_offset();
   }
 
   // jmp to the origin rest instructions
   if (branch) {
     CodeGen codegen(&turbo_assembler_);
-    addr32_t stub_addr = curr_relo_ip + 6;
     codegen.JmpNear(curr_orig_ip);
   }
 
   // update origin
-  int new_origin_len = curr_orig_ip - (addr_t)origin->addr();
-  origin->reset(origin->addr(), new_origin_len);
+  int new_origin_len = curr_orig_ip - (addr_t)origin->addr;
+  origin->reset(origin->addr, new_origin_len);
 
-  int relo_len = turbo_assembler_.code_buffer()->size();
+  int relo_len = turbo_assembler_.GetCodeBuffer()->GetBufferSize();
   if (relo_len > relocated->size) {
     DEBUG_LOG("pre-alloc code chunk not enough");
     return -1;
@@ -62,8 +60,9 @@ int GenRelocateCodeFixed(void *buffer, CodeMemBlock *origin, CodeMemBlock *reloc
 
   // generate executable code
   {
-    auto code = AssemblerCodeBuilder::FinalizeFromTurboAssembler(&turbo_assembler_);
-    relocated->reset(code.addr(), code.size);
+    auto code = AssemblyCodeBuilder::FinalizeFromTurboAssembler(&turbo_assembler_);
+    relocated->reset(code->addr, code->size);
+    delete code;
   }
 
   return 0;
@@ -72,18 +71,6 @@ int GenRelocateCodeFixed(void *buffer, CodeMemBlock *origin, CodeMemBlock *reloc
 void GenRelocateCodeAndBranch(void *buffer, CodeMemBlock *origin, CodeMemBlock *relocated) {
   GenRelocateCode(buffer, origin, relocated, true);
 }
-
-namespace dobby {
-
-InstructionRelocator::RelocationResult InstructionRelocator::RelocateX86(addr_t src, std::span<const uint8_t> code, addr_t dst, bool branch) {
-  CodeMemBlock origin(src, code.size());
-  CodeMemBlock relocated(dst, code.size() * 2);
-  GenRelocateCode((void *)dst, &origin, &relocated, branch);
-  std::vector<uint8_t> relocated_code((uint8_t *)relocated.addr(), (uint8_t *)relocated.addr() + relocated.size);
-  return {relocated_code, (uint32_t)origin.size, dst};
-}
-
-} // namespace dobby
 
 void GenRelocateCode(void *buffer, CodeMemBlock *origin, CodeMemBlock *relocated, bool branch) {
   GenRelocateCodeX86Shared(buffer, origin, relocated, branch);

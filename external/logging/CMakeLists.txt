@@ -16,3 +16,5 @@ set(SOURCE_FILE_LIST ${SOURCE_FILE_LIST_})
 add_library(logging
   ${SOURCE_FILE_LIST}
   )
+
+target_link_libraries(logging PUBLIC fmt::fmt)

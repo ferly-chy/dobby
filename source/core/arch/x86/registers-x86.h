@@ -2,7 +2,7 @@
 #define ARCH_IA32_REGISTERS
 
 #include "core/arch/x86/constants-x86.h"
-#include "core/arch/CpuRegister.h"
+#include "core/arch/Cpu.h"
 
 namespace zz {
 namespace x86 {
@@ -28,7 +28,7 @@ class CPURegister : public RegisterBase {
 public:
   enum RegisterType { kDefault, kInvalid };
 
-  constexpr CPURegister(int code, int size, RegisterType type) : RegisterBase(code), reg_size_(size), reg_type_(type) {
+  constexpr CPURegister(int code, int size, RegisterType type) : RegisterBase(code), reg_type_(type), reg_size_(size) {
   }
 
   static constexpr CPURegister Create(int code, int size, RegisterType type) {
@@ -49,7 +49,7 @@ public:
 
 public:
   bool is_byte_register() const {
-    return reg_id <= 3;
+    return reg_code_ <= 3;
   }
 
   int size() {

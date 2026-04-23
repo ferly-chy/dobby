@@ -7,7 +7,7 @@
 #define CHECK_WITH_MSG(condition, message)                                                                             \
   do {                                                                                                                 \
     if (!(condition)) {                                                                                                \
-      FATAL_LOG("Check failed: %s.\n", message);                                                                           \
+      FATAL_LOG("Check failed: {}.\n", message);                                                                           \
     }                                                                                                                  \
   } while (0)
 #define CHECK(condition) CHECK_WITH_MSG(condition, #condition)
@@ -17,7 +17,7 @@
 #define DCHECK_WITH_MSG(condition, message)                                                                            \
   do {                                                                                                                 \
     if (!(condition)) {                                                                                                \
-      FATAL_LOG("%s", message);                                                                                            \
+      FATAL_LOG("{}", message);                                                                                            \
     }                                                                                                                  \
   } while (0)
 #define DCHECK(condition) DCHECK_WITH_MSG(condition, #condition)
@@ -27,14 +27,15 @@
 #define CHECK_OP(name, op, lhs, rhs)                                                                                   \
   do {                                                                                                                 \
     if (!(lhs op rhs)) {                                                                                               \
-      FATAL_LOG(" Check failed: %s.\n", #lhs " " #op " " #rhs);                                                            \
-    }                                                                                                                  \
-  } while (0)
+      FATAL_LOG(" Check failed: {}.\n", #lhs " " #op " " #rhs);                                                            \
+      ...
+      #define DCHECK_OP(name, op, lhs, rhs)                                                                                  \
+      do {                                                                                                                 \
+      if (!((lhs)op(rhs))) {                                                                                             \
+      FATAL_LOG("{}", "");                                                                                                 \
+      }                                                                                                                  \
+      } while (0)
 
-#define DCHECK_OP(name, op, lhs, rhs)                                                                                  \
-  do {                                                                                                                 \
-    if (!((lhs)op(rhs))) {                                                                                             \
-      FATAL_LOG("%s", "");                                                                                                 \
     }                                                                                                                  \
   } while (0)
 

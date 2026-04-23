@@ -6,27 +6,14 @@
 #include "logging/check_logging.h"
 #include "PlatformUnifiedInterface/platform.h"
 
-static int GetProtectionFromMemoryPermission(MemoryPermission access) {
-  int prot = PAGE_NOACCESS;
-  if (access & MemoryPermission::kExecute) {
-    if (access & MemoryPermission::kWrite) {
-      prot = PAGE_EXECUTE_READWRITE;
-    } else if (access & MemoryPermission::kRead) {
-      prot = PAGE_EXECUTE_READ;
-    } else {
-      prot = PAGE_EXECUTE;
-    }
-  } else {
-    if (access & MemoryPermission::kWrite) {
-      prot = PAGE_READWRITE;
-    } else if (access & MemoryPermission::kRead) {
-      prot = PAGE_READONLY;
-    }
-  }
-  return prot;
+int GetProtectionFromMemoryPermission(MemoryPermission access) {
+  if (kReadWriteExecute == access)
+    return PAGE_EXECUTE_READWRITE;
+  else if (kReadExecute == access)
+    return PAGE_EXECUTE_READ;
 }
 
-static int AllocPageSize() {
+int OSMemory::AllocPageSize() {
   static int lastRet = -1;
   if (lastRet == -1) {
     SYSTEM_INFO si;
@@ -41,44 +28,48 @@ int OSMemory::PageSize() {
   if (lastRet == -1) {
     SYSTEM_INFO si;
     GetSystemInfo(&si);
-    lastRet = si.dwPageSize;
+    lastRet = si.dwPageSize; // should be used with VirtualAlloc(MEM_RESERVE)
   }
   return lastRet;
 }
 
-void *OSMemory::Allocate(size_t size, MemoryPermission access) {
-  return OSMemory::Allocate(size, access, nullptr);
-}
+void *OSMemory::Allocate(void *address, int size, MemoryPermission access) {
+  DCHECK_EQ(0, reinterpret_cast<uintptr_t>(address) % AllocPageSize());
+  DCHECK_EQ(0, size % PageSize());
 
-void *OSMemory::Allocate(size_t size, MemoryPermission access, void *fixed_address) {
-  int prot = GetProtectionFromMemoryPermission(access);
-
-  void *result = VirtualAlloc(fixed_address, size, MEM_COMMIT | MEM_RESERVE, prot);
+  void *result = VirtualAlloc(address, size, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS);
+  OSMemory::SetPermission(result, size, kReadWriteExecute);
   if (result == nullptr)
     return nullptr;
 
-  return result;
+  // TODO: if need align
+  void *aligned_base = result;
+  return static_cast<void *>(aligned_base);
 }
 
-bool OSMemory::Free(void *address, size_t size) {
+// static
+bool OSMemory::Free(void *address, const int size) {
   DCHECK_EQ(0, reinterpret_cast<uintptr_t>(address) % PageSize());
+  DCHECK_EQ(0, size % PageSize());
 
-  return VirtualFree(address, 0, MEM_RELEASE) != 0;
+  return VirtualFree(address, size, MEM_RELEASE);
 }
 
-bool OSMemory::Release(void *address, size_t size) {
+bool OSMemory::Release(void *address, int size) {
   DCHECK_EQ(0, reinterpret_cast<uintptr_t>(address) % PageSize());
+  DCHECK_EQ(0, size % PageSize());
 
   return OSMemory::Free(address, size);
 }
 
-bool OSMemory::SetPermission(void *address, size_t size, MemoryPermission access) {
+bool OSMemory::SetPermission(void *address, int size, MemoryPermission access) {
   DCHECK_EQ(0, reinterpret_cast<uintptr_t>(address) % PageSize());
+  DCHECK_EQ(0, size % PageSize());
 
   int prot = GetProtectionFromMemoryPermission(access);
 
   DWORD oldProtect;
-  return VirtualProtect(address, size, prot, &oldProtect) != 0;
+  return VirtualProtect(address, size, prot, &oldProtect);
 }
 
 // =====

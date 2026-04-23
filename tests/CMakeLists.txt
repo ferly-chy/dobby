@@ -118,3 +118,13 @@ add_executable(test_native
 
 target_link_libraries(test_native
   dobby)
+
+# ---
+
+add_executable(test_vtable
+  test_vtable.cpp)
+
+target_compile_features(test_vtable PRIVATE cxx_std_26)
+
+target_link_libraries(test_vtable
+  dobby)

@@ -1,92 +1,273 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import logging
 import os
 import shutil
 import subprocess
 import sys
-import logging
-import argparse
+from enum import StrEnum
+from pathlib import Path
+from typing import Final, Sequence
 
-platforms = {
-    "macos": ["x86_64", "arm64"],
-    "iphoneos": ["arm64"],
-    "linux": ["x86", "x86_64", "arm", "arm64"],
-    "android": ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+class LibraryType(StrEnum):
+    SHARED = "shared"
+    STATIC = "static"
+
+class Platform(StrEnum):
+    MACOS = "macos"
+    IPHONEOS = "iphoneos"
+    LINUX = "linux"
+    ANDROID = "android"
+    WINDOWS = "windows"
+
+PLATFORMS_ARCHS: Final[dict[Platform, list[str]]] = {
+    Platform.MACOS: ["x86_64", "arm64", "arm64e"],
+    Platform.IPHONEOS: ["arm64", "arm64e"],
+    Platform.LINUX: ["x86", "x86_64", "arm", "arm64"],
+    Platform.ANDROID: ["x86", "x86_64", "armeabi-v7a", "arm64-v8a"],
+}
+
+ANDROID_ARCH_MAP: Final[dict[str, str]] = {
+    "arm": "armeabi-v7a",
+    "arm64": "arm64-v8a",
+    "v7a": "armeabi-v7a",
+    "v8a": "arm64-v8a",
 }
 
 class PlatformBuilder:
-    def __init__(self, project_dir, platform, arch, build_type="Release"):
-        self.project_dir = os.path.abspath(project_dir)
+    def __init__(
+        self,
+        project_dir: Path,
+        library_type: LibraryType,
+        platform: Platform,
+        arch: str,
+        cmake_dir: Path | None = None,
+        llvm_dir: Path | None = None,
+    ):
+        self.project_dir = project_dir
+        self.library_type = library_type
         self.platform = platform
         self.arch = arch
-        self.build_type = build_type
-        
-        self.build_dir = os.path.join(self.project_dir, "build", f"cmake-{platform}-{arch}")
-        self.output_dir = os.path.join(self.project_dir, "dist", platform, arch)
-        self.cmake_args = [
-            f"-DCMAKE_BUILD_TYPE={self.build_type}",
-            "-DDOBBY_BUILD_EXAMPLE=ON"
-        ]
+        self.cmake_build_type = "Release"
 
-    def run_command(self, cmd, cwd=None):
-        logging.info(f"Running: {' '.join(cmd)}")
-        subprocess.run(cmd, cwd=cwd, check=True)
+        self.build_root = self.project_dir / "build"
+        self.cmake_build_dir = self.build_root / f"cmake-build-{platform}-{arch}"
+        self.output_dir = self.build_root / platform / arch
+
+        # Tool paths
+        self.cmake = (cmake_dir / "bin" / "cmake") if cmake_dir else Path("cmake")
+        
+        self.clang = (llvm_dir / "bin" / "clang") if llvm_dir else Path("clang")
+        self.clangxx = (llvm_dir / "bin" / "clang++") if llvm_dir else Path("clang++")
+
+        self.cmake_args: list[str] = [
+            f"-DCMAKE_BUILD_TYPE={self.cmake_build_type}",
+            "-G Ninja", # Use Ninja by default
+        ]
+        
+        if self.platform != Platform.ANDROID:
+            self.cmake_args += [
+                f"-DCMAKE_C_COMPILER={self.clang}",
+                f"-DCMAKE_CXX_COMPILER={self.clangxx}",
+            ]
+
+        self.shared_output_name = "libdobby.so"
+        self.static_output_name = "libdobby.a"
+
+    def setup_platform_args(self):
+        """To be overridden by subclasses."""
+        pass
 
     def generate(self):
-        os.makedirs(self.build_dir, exist_ok=True)
-        cmd = ["cmake", "-S", self.project_dir, "-B", self.build_dir] + self.cmake_args
-        self.run_command(cmd)
+        self.cmake_build_dir.mkdir(parents=True, exist_ok=True)
+        flat_args = []
+        for arg in self.cmake_args:
+            if arg.startswith("-G"):
+                flat_args.extend(arg.split(maxsplit=1))
+            else:
+                flat_args.append(arg)
+
+        cmd = [
+            str(self.cmake),
+            "-S", str(self.project_dir),
+            "-B", str(self.cmake_build_dir),
+        ] + flat_args
+        
+        logger.info(f"Generating build system: {' '.join(cmd)}")
+        subprocess.run(cmd, check=True)
 
     def build(self):
-        cmd = ["cmake", "--build", self.build_dir, "-j", str(os.cpu_count() or 4)]
-        self.run_command(cmd)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.generate()
 
-    def install(self):
-        os.makedirs(self.output_dir, exist_ok=True)
-        # Copy libraries
-        for root, _, files in os.walk(self.build_dir):
-            for file in files:
-                if file.endswith((".so", ".a", ".dylib", ".dll", ".lib")):
-                    shutil.copy2(os.path.join(root, file), self.output_dir)
-        logging.info(f"Built artifacts moved to {self.output_dir}")
+        build_cmd = [
+            str(self.cmake),
+            "--build", ".",
+            "--clean-first",
+            "--target", "dobby",
+            "--target", "dobby_static",
+            "--", "-j8"
+        ]
+        logger.info(f"Building targets: {' '.join(build_cmd)}")
+        subprocess.run(build_cmd, cwd=self.cmake_build_dir, check=True)
 
-class AndroidBuilder(PlatformBuilder):
-    def __init__(self, project_dir, arch, ndk_dir, api_level=21):
-        super().__init__(project_dir, "android", arch)
-        toolchain = os.path.join(ndk_dir, "build", "cmake", "android.toolchain.cmake")
-        if not os.path.exists(toolchain):
-            raise FileNotFoundError(f"Android toolchain not found at {toolchain}")
-        
+        # Copy artifacts
+        for name in [self.shared_output_name, self.static_output_name]:
+            src = self.cmake_build_dir / name
+            if src.exists():
+                logger.info(f"Copying {src} to {self.output_dir}")
+                shutil.copy2(src, self.output_dir / name)
+            else:
+                logger.warning(f"Artifact not found: {src}")
+
+class WindowsBuilder(PlatformBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.shared_output_name = "libdobby.dll"
+        self.static_output_name = "libdobby.lib"
+
+    def setup_platform_args(self):
+        self.cmake_args.append(f"-DCMAKE_SYSTEM_PROCESSOR={self.arch}")
+
+class LinuxBuilder(PlatformBuilder):
+    def setup_platform_args(self):
         self.cmake_args += [
-            f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
-            f"-DANDROID_ABI={arch}",
-            f"-DANDROID_PLATFORM=android-{api_level}",
-            "-DANDROID_STL=c++_static"
+            "-DCMAKE_SYSTEM_NAME=Linux",
+            f"-DCMAKE_SYSTEM_PROCESSOR={self.arch}",
         ]
 
-if __name__ == "__main__":
+class AndroidBuilder(PlatformBuilder):
+    def __init__(self, ndk_dir: Path, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ndk_dir = ndk_dir
+
+    def setup_platform_args(self):
+        api_level = 21
+        toolchain = self.ndk_dir / "build" / "cmake" / "android.toolchain.cmake"
+        if not toolchain.exists():
+             logger.error(f"Android toolchain not found: {toolchain}")
+             sys.exit(1)
+             
+        # Use CMAKE_ANDROID_NDK for modern CMake built-in support
+        # AND CMAKE_TOOLCHAIN_FILE for the NDK's custom logic
+        self.cmake_args += [
+            f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
+            f"-DANDROID_ABI={self.arch}",
+            f"-DANDROID_NDK={self.ndk_dir}",
+            f"-DANDROID_PLATFORM=android-{api_level}",
+            "-DANDROID_STL=c++_static",
+            # Sometimes CMake's built-in support interferes, try to satisfy it
+            f"-DCMAKE_ANDROID_NDK={self.ndk_dir}",
+            f"-DCMAKE_ANDROID_ARCH_ABI={self.arch}",
+            f"-DCMAKE_SYSTEM_NAME=Android",
+            f"-DCMAKE_SYSTEM_VERSION={api_level}",
+        ]
+
+class DarwinBuilder(PlatformBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.shared_output_name = "libdobby.dylib"
+        self.static_output_name = "libdobby.a"
+
+    def setup_platform_args(self):
+        self.cmake_args += [
+            f"-DCMAKE_OSX_ARCHITECTURES={self.arch}",
+            f"-DCMAKE_SYSTEM_PROCESSOR={self.arch}",
+        ]
+        match self.platform:
+            case Platform.MACOS:
+                self.cmake_args.append("-DCMAKE_SYSTEM_NAME=Darwin")
+            case Platform.IPHONEOS:
+                self.cmake_args += [
+                    "-DCMAKE_SYSTEM_NAME=iOS",
+                    "-DCMAKE_OSX_DEPLOYMENT_TARGET=9.3",
+                ]
+
+    @staticmethod
+    def create_universal_binary(project_dir: Path, platform: Platform, names: Sequence[str]):
+        archs = PLATFORMS_ARCHS.get(platform, [])
+        fat_dir = project_dir / "build" / platform / "universal"
+        fat_dir.mkdir(parents=True, exist_ok=True)
+
+        for name in names:
+            files = [project_dir / "build" / platform / arch / name for arch in archs]
+            files = [str(f) for f in files if f.exists()]
+            
+            if not files:
+                continue
+
+            output = fat_dir / name
+            cmd = ["lipo", "-create"] + files + ["-output", str(output)]
+            logger.info(f"Creating universal binary: {' '.join(cmd)}")
+            subprocess.run(cmd, check=True)
+
+def main():
     parser = argparse.ArgumentParser(description="Dobby Platform Builder")
-    parser.add_argument("--platform", choices=platforms.keys(), required=True)
-    parser.add_argument("--arch", help="Specific arch or 'all'", default="all")
-    parser.add_argument("--ndk", help="Android NDK path (or $ANDROID_NDK_HOME)", default=os.environ.get("ANDROID_NDK_HOME"))
+    parser.add_argument("--platform", type=Platform, choices=list(Platform), required=True)
+    parser.add_argument("--arch", type=str, required=True, help="Architecture (comma-separated or 'all')")
+    parser.add_argument("--type", type=LibraryType, choices=list(LibraryType), default=LibraryType.STATIC)
+    parser.add_argument("--ndk", type=Path, help="Android NDK directory")
+    parser.add_argument("--cmake", type=Path, help="Custom CMake directory")
+    parser.add_argument("--llvm", type=Path, help="Custom LLVM directory")
     
     args = parser.parse_args()
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    target_archs = platforms[args.platform] if args.arch == "all" else [args.arch]
-    
-    for arch in target_archs:
-        logging.info(f"Building for {args.platform} {arch}...")
-        try:
-            if args.platform == "android":
-                if not args.ndk:
-                    logging.error("NDK path required for Android build. Set $ANDROID_NDK_HOME or use --ndk")
-                    sys.exit(1)
-                builder = AndroidBuilder(project_root, arch, args.ndk)
+
+    project_root = Path(__file__).resolve().parent.parent
+    if not (project_root / "CMakeLists.txt").exists():
+        logger.error(f"Execution failed: {project_root} is not the Dobby project root.")
+        sys.exit(1)
+
+    if args.arch == "all":
+        selected_archs = PLATFORMS_ARCHS[args.platform]
+    else:
+        selected_archs = [a.strip() for a in args.arch.split(",")]
+
+    if args.platform == Platform.ANDROID:
+        mapped_archs = []
+        for a in selected_archs:
+            if mapped := ANDROID_ARCH_MAP.get(a):
+                mapped_archs.append(mapped)
             else:
-                builder = PlatformBuilder(project_root, args.platform, arch)
-            
-            builder.generate()
-            builder.build()
-            builder.install()
-        except Exception as e:
-            logging.error(f"Failed to build for {arch}: {e}")
-            sys.exit(1)
+                mapped_archs.append(a)
+        selected_archs = mapped_archs
+
+    valid_archs = PLATFORMS_ARCHS.get(args.platform, [])
+    for a in selected_archs:
+        if a not in valid_archs and args.platform != Platform.WINDOWS:
+             logger.error(f"Invalid architecture '{a}' for platform '{args.platform}' (Available: {valid_archs})")
+             sys.exit(1)
+
+    if args.platform == Platform.ANDROID and not args.ndk:
+        logger.error("Android NDK directory (--ndk) is required for Android platform.")
+        sys.exit(1)
+
+    builder_instance: PlatformBuilder | None = None
+    for arch in selected_archs:
+        match args.platform:
+            case Platform.MACOS | Platform.IPHONEOS:
+                builder_instance = DarwinBuilder(project_root, args.type, args.platform, arch, args.cmake, args.llvm)
+            case Platform.ANDROID:
+                builder_instance = AndroidBuilder(args.ndk, project_root, args.type, args.platform, arch, args.cmake, args.llvm)
+            case Platform.LINUX:
+                builder_instance = LinuxBuilder(project_root, args.type, args.platform, arch, args.cmake, args.llvm)
+            case Platform.WINDOWS:
+                builder_instance = WindowsBuilder(project_root, args.type, args.platform, arch, args.cmake, args.llvm)
+
+        if builder_instance:
+            builder_instance.setup_platform_args()
+            logger.info(f"Starting build for {args.platform} ({arch})")
+            builder_instance.build()
+
+    if args.platform in [Platform.MACOS, Platform.IPHONEOS] and args.arch == "all" and builder_instance:
+        DarwinBuilder.create_universal_binary(
+            project_root, args.platform, [builder_instance.shared_output_name, builder_instance.static_output_name]
+        )
+
+if __name__ == "__main__":
+    main()

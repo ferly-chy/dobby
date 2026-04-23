@@ -5,6 +5,11 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+#include <fmt/format.h>
+#include <string>
+#endif
+
 #define LOG_TAG NULL
 
 typedef enum {
@@ -37,7 +42,20 @@ public:
   bool enable_time_tag_;
   bool enable_syslog_;
 
+  static Logger *g_logger;
+  static Logger *Shared() {
+    if (g_logger == nullptr) {
+      g_logger = new Logger();
+    }
+    return g_logger;
+  }
+
   Logger() {
+    log_tag_ = nullptr;
+    log_file_ = nullptr;
+    log_level_ = LOG_LEVEL_DEBUG;
+    enable_time_tag_ = false;
+    enable_syslog_ = false;
   }
 
   Logger(const char *tag, const char *file, LogLevel level, bool enable_time_tag, bool enable_syslog) {
@@ -47,8 +65,6 @@ public:
     enable_time_tag_ = enable_time_tag;
     enable_syslog_ = enable_syslog;
   }
-
-  static Logger *Shared();
 
   void setOptions(const char *tag, const char *file, LogLevel level, bool enable_time_tag, bool enable_syslog) {
     if (tag)
@@ -86,49 +102,42 @@ public:
     enable_syslog_ = true;
   }
 
-  void logv(LogLevel level, const char *in_fmt, va_list ap);
+  void logv(LogLevel level, const char *fmt, va_list ap);
 
-  void log(LogLevel level, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    logv(level, fmt, ap);
-    va_end(ap);
+  template <typename... Args>
+  void log(LogLevel level, fmt::format_string<Args...> format, Args &&...args) {
+    if (level < log_level_)
+      return;
+    std::string s = fmt::format(format, std::forward<Args>(args)...);
+    log_internal(level, s.c_str());
   }
 
-  void debug(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    logv(LOG_LEVEL_DEBUG, fmt, ap);
-    va_end(ap);
+  template <typename... Args>
+  void debug(fmt::format_string<Args...> format, Args &&...args) {
+    log(LOG_LEVEL_DEBUG, format, std::forward<Args>(args)...);
   }
 
-  void info(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    logv(LOG_LEVEL_INFO, fmt, ap);
-    va_end(ap);
+  template <typename... Args>
+  void info(fmt::format_string<Args...> format, Args &&...args) {
+    log(LOG_LEVEL_INFO, format, std::forward<Args>(args)...);
   }
 
-  void warn(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    logv(LOG_LEVEL_WARN, fmt, ap);
-    va_end(ap);
+  template <typename... Args>
+  void warn(fmt::format_string<Args...> format, Args &&...args) {
+    log(LOG_LEVEL_WARN, format, std::forward<Args>(args)...);
   }
 
-  void error(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    logv(LOG_LEVEL_ERROR, fmt, ap);
-    va_end(ap);
+  template <typename... Args>
+  void error(fmt::format_string<Args...> format, Args &&...args) {
+    log(LOG_LEVEL_ERROR, format, std::forward<Args>(args)...);
   }
 
-  void fatal(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    logv(LOG_LEVEL_FATAL, fmt, ap);
-    va_end(ap);
+  template <typename... Args>
+  void fatal(fmt::format_string<Args...> format, Args &&...args) {
+    log(LOG_LEVEL_FATAL, format, std::forward<Args>(args)...);
   }
+
+  void log_internal(LogLevel level, const char *msg);
 };
 
 #endif
@@ -150,24 +159,27 @@ void logger_set_options(void *logger, const char *tag, const char *file, LogLeve
                         bool enable_syslog);
 void logger_log_impl(void *logger, LogLevel level, const char *fmt, ...);
 
-#if defined(LOG_LEVEL)
-#else
-#define LOG_LEVEL LOG_LEVEL_DEBUG
-#endif
-
 #ifdef __cplusplus
 }
 #endif
 
+#ifdef __cplusplus
+#define LOG(level, format, ...)                                                                                        \
+  do {                                                                                                                 \
+    if (LOG_TAG)                                                                                                       \
+      Logger::Shared()->log(level, "[{}] " format, LOG_TAG, ##__VA_ARGS__);                                            \
+    else                                                                                                               \
+      Logger::Shared()->log(level, format, ##__VA_ARGS__);                                                             \
+  } while (0)
+#else
 #define LOG(level, fmt, ...)                                                                                           \
   do {                                                                                                                 \
-    if (LOG_LEVEL > level)                                                                                             \
-      break;                                                                                                           \
     if (LOG_TAG)                                                                                                       \
       LOG_FUNCTION_IMPL(NULL, level, "[%s] " fmt, LOG_TAG, ##__VA_ARGS__);                                             \
     else                                                                                                               \
       LOG_FUNCTION_IMPL(NULL, level, fmt, ##__VA_ARGS__);                                                              \
   } while (0)
+#endif
 
 #define DEBUG_LOG(fmt, ...)                                                                                            \
   do {                                                                                                                 \
@@ -184,25 +196,27 @@ void logger_log_impl(void *logger, LogLevel level, const char *fmt, ...);
     LOG(LOG_LEVEL_WARN, fmt, ##__VA_ARGS__);                                                                           \
   } while (0)
 
+#ifdef __cplusplus
 #define ERROR_LOG(fmt, ...)                                                                                            \
   do {                                                                                                                 \
-    LOG(LOG_LEVEL_ERROR, "[!] [%s:%d:%s] " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);                          \
+    LOG(LOG_LEVEL_ERROR, "[!] [{}:{}:{}]" fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);                           \
   } while (0)
 
 #define FATAL_LOG(fmt, ...)                                                                                            \
   do {                                                                                                                 \
-    LOG(LOG_LEVEL_FATAL, "[!] [%s:%d:%s] " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);                          \
-    *(uint64_t *)0x41414141 = 0x41414141;                                                                              \
+    LOG(LOG_LEVEL_FATAL, "[!] [{}:{}:{}]" fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);                           \
+  } while (0)
+#else
+#define ERROR_LOG(fmt, ...)                                                                                            \
+  do {                                                                                                                 \
+    LOG(LOG_LEVEL_ERROR, "[!] [%s:%d:%s]" fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);                           \
   } while (0)
 
-#if defined(NO_FUNC_CALL_TRACE)
-#define __FUNC_CALL_TRACE__()
-#else
-#define __FUNC_CALL_TRACE__()                                                                                          \
+#define FATAL_LOG(fmt, ...)                                                                                            \
   do {                                                                                                                 \
-    DEBUG_LOG("[+] call -> %s:%d", __PRETTY_FUNCTION__, __LINE__);                                                     \
+    LOG(LOG_LEVEL_FATAL, "[!] [%s:%d:%s]" fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);                           \
   } while (0)
 #endif
 
-#define UNIMPLEMENTED() FATAL_LOG("%s\n", "unimplemented code!!!")
-#define UNREACHABLE() FATAL_LOG("%s\n", "unreachable code!!!")
+#define UNIMPLEMENTED() FATAL_LOG("{}\n", "unimplemented code!!!")
+#define UNREACHABLE() FATAL_LOG("{}\n", "unreachable code!!!")

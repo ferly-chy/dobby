@@ -6,7 +6,9 @@
 #include "core/arch/arm/registers-arm.h"
 #include "core/assembler/assembler.h"
 
-#include "MemoryAllocator/CodeMemBuffer.h"
+#include "MemoryAllocator/CodeBuffer/code_buffer_arm.h"
+
+#include <unordered_map>
 
 enum ref_label_type_t { kLdrLiteral };
 
@@ -40,17 +42,17 @@ class Operand {
   friend class OpEncode;
 
 public:
-  Operand(int immediate) : imm_(immediate), rm_(no_reg), shift_(LSL), shift_imm_(0), rs_(no_reg) {
+  Operand(int immediate) : rm_(no_reg), rs_(no_reg), shift_(LSL), shift_imm_(0), imm_(immediate) {
   }
 
-  Operand(Register rm) : imm_(0), rm_(rm), shift_(LSL), shift_imm_(0), rs_(no_reg) {
+  Operand(Register rm) : rm_(rm), rs_(no_reg), shift_(LSL), shift_imm_(0), imm_(0) {
   }
 
   Operand(Register rm, Shift shift, uint32_t shift_imm)
-      : imm_(0), rm_(rm), shift_(shift), shift_imm_(shift_imm), rs_(no_reg) {
+      : rm_(rm), rs_(no_reg), shift_(shift), shift_imm_(shift_imm), imm_(0) {
   }
 
-  Operand(Register rm, Shift shift, Register rs) : imm_(0), rm_(rm), shift_(shift), shift_imm_(0), rs_(rs) {
+  Operand(Register rm, Shift shift, Register rs) : rm_(rm), rs_(rs), shift_(shift), shift_imm_(0), imm_(0) {
   }
 
 public:
@@ -78,15 +80,15 @@ class MemOperand {
 
 public:
   MemOperand(Register rn, int32_t offset = 0, AddrMode addrmode = Offset)
-      : rn_(rn), offset_(offset), rm_(no_reg), shift_(LSL), shift_imm_(0), addrmode_(addrmode) {
+      : rn_(rn), rm_(no_reg), offset_(offset), addrmode_(addrmode) {
   }
 
   MemOperand(Register rn, Register rm, AddrMode addrmode = Offset)
-      : rn_(rn), offset_(0), rm_(rm), shift_(LSL), shift_imm_(0), addrmode_(addrmode) {
+      : rn_(rn), rm_(rm), offset_(0), addrmode_(addrmode) {
   }
 
   MemOperand(Register rn, Register rm, Shift shift, uint32_t shift_imm, AddrMode addrmode = Offset)
-      : rn_(rn), offset_(0), rm_(rm), shift_(shift), shift_imm_(shift_imm), addrmode_(addrmode) {
+      : rn_(rn), rm_(rm), offset_(0), addrmode_(addrmode) {
   }
 
   const Register &rn() const {
@@ -118,9 +120,6 @@ private:
 
   int32_t offset_; // valid if rm_ == no_reg
 
-  Shift shift_;
-  uint32_t shift_imm_; // valid if rm_ != no_reg && rs_ == no_reg
-
   AddrMode addrmode_; // bits P, U, and W
 };
 
@@ -145,7 +144,7 @@ public:
     encoding |= bits(abs(operand.offset_), 0, 11);
 
     // addr mode
-    uint32_t P, W;
+    uint32_t P = 0, W = 0;
     if (operand.addrmode_ == Offset) {
       P = 1;
       W = 0;
@@ -185,17 +184,20 @@ private:
   ExecuteState execute_state_;
 
 public:
-  Assembler(void *address) : AssemblerBase((addr_t)address) {
+  Assembler(void *address) : AssemblerBase(address) {
     execute_state_ = ARMExecuteState;
+    buffer_ = new CodeBuffer();
   }
 
   // shared_ptr is better choice
   // but we can't use it at kernelspace
-  Assembler(void *address, CodeMemBuffer *buffer) : AssemblerBase((addr_t)address) {
+  Assembler(void *address, CodeBuffer *buffer) : AssemblerBase(address) {
     execute_state_ = ARMExecuteState;
+    buffer_ = buffer;
   }
 
   void ClearCodeBuffer() {
+    buffer_ = NULL;
   }
 
 public:
@@ -208,7 +210,7 @@ public:
 
   void SetRealizedAddress(void *address) {
     DCHECK_EQ(0, reinterpret_cast<uint64_t>(address) % 4);
-    set_fixed_addr((addr_t)address);
+    AssemblerBase::SetRealizedAddress(address);
   }
 
   void EmitARMInst(arm_inst_t instr);
@@ -236,7 +238,7 @@ public:
 
     encoding |= Rn(rn);
 
-    code_buffer_.EmitARMInst(encoding);
+    buffer_->EmitARMInst(encoding);
   }
 
   void ldr(Register rt, const MemOperand &operand) {
@@ -252,7 +254,7 @@ public:
   void load_store(uint32_t encoding, Condition cond, Register rt, const MemOperand &operand) {
     encoding |= (cond << kConditionShift);
     encoding |= Rt(rt) | OpEncode::MemOperand(operand);
-    code_buffer_.EmitARMInst(encoding);
+    buffer_->EmitARMInst(encoding);
   }
 
   void mov(Register rd, const Operand &operand) {
@@ -263,7 +265,7 @@ public:
     uint32_t encoding = 0x01a00000;
     encoding |= (cond << kConditionShift);
     encoding |= Rd(rd) | OpEncode::Operand(operand);
-    code_buffer_.EmitARMInst(encoding);
+    buffer_->EmitARMInst(encoding);
   }
 
   // Branch instructions.
@@ -275,7 +277,7 @@ public:
     encoding |= (cond << kConditionShift);
     uint32_t imm24 = bits(branch_offset >> 2, 0, 23);
     encoding |= imm24;
-    code_buffer_.EmitARMInst(encoding);
+    buffer_->EmitARMInst(encoding);
   }
 
   void bl(int branch_offset) {
@@ -286,7 +288,7 @@ public:
     encoding |= (cond << kConditionShift);
     uint32_t imm24 = bits(branch_offset >> 2, 0, 23);
     encoding |= imm24;
-    code_buffer_.EmitARMInst(encoding);
+    buffer_->EmitARMInst(encoding);
   }
 
   void blx(int branch_offset) {
@@ -299,7 +301,22 @@ public:
     UNIMPLEMENTED();
   }
 
-}; // namespace arm
+  // stack operations
+  void push(RegisterList regs) {
+    uint32_t encoding = regs.size() > 1 ? 0xe92d0000 : 0xe52d0000;
+    push_and_pop(encoding, regs);
+  }
+
+  void pop(RegisterList regs) {
+    uint32_t encoding = regs.size() > 1 ? 0xe8bd0000 : 0xe49d0000;
+    push_and_pop(encoding, regs);
+  }
+
+  void push_and_pop(uint32_t encoding, RegisterList regs) {
+    encoding |= regs.get_code();
+    buffer_->EmitARMInst(encoding);
+  }
+};
 
 // ---
 
@@ -311,16 +328,16 @@ public:
   ~TurboAssembler() {
   }
 
-  TurboAssembler(void *address, CodeMemBuffer *buffer) : Assembler(address, buffer) {
+  TurboAssembler(void *address, CodeBuffer *buffer) : Assembler(address, buffer) {
   }
 
-  void Ldr(Register rt, PseudoLabel *label) {
-    if (label->pos) {
-      int offset = label->pos - code_buffer_.size();
+  void Ldr(Register rt, AssemblerPseudoLabel *label) {
+    if (label->pos()) {
+      int offset = label->pos() - buffer_->GetBufferSize();
       ldr(rt, MemOperand(pc, offset));
     } else {
       // record this ldr, and fix later.
-      label->link_to(kLdrLiteral, code_buffer_.size());
+      label->link_to(kLdrLiteral, buffer_->GetBufferSize());
       ldr(rt, MemOperand(pc, 0));
     }
   }
@@ -330,29 +347,14 @@ public:
     bl(0);
     b(4);
     ldr(pc, MemOperand(pc, -4));
-    code_buffer_.Emit<int32_t>((uint32_t)(uintptr_t)function.address);
+    buffer_->Emit32((uint32_t)(uintptr_t)function.address());
   }
 
   void Move32Immeidate(Register rd, const Operand &x, Condition cond = AL) {
   }
 
-  void bindLabel(PseudoLabel *label) {
-    label->bind_to(code_buffer_.size());
-    if (label->has_confused_instructions()) {
-      label->link_confused_instructions(&code_buffer_);
-    }
-  }
-
-  void EmitAddress(uint32_t value) {
-    code_buffer_.Emit<uint32_t>(value);
-  }
-
-  void AppendRelocLabel(RelocDataLabel *label) {
-    data_labels.push_back(label);
-  }
-
-  void RelocLabelFixup(stl::unordered_map<off_t, off_t> *relocated_offset_map) {
-    for (auto *data_label : data_labels) {
+  void RelocLabelFixup(std::unordered_map<off_t, off_t> *relocated_offset_map) {
+    for (auto *data_label : data_labels_) {
       auto val = data_label->data<int32_t>();
       auto iter = relocated_offset_map->find(val);
       if (iter != relocated_offset_map->end()) {

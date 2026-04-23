@@ -12,11 +12,12 @@
 #include <mach/vm_statistics.h>
 #endif
 
+#undef KERN_RETURN_ERROR
 #define KERN_RETURN_ERROR(kr, failure)                                                                                 \
   do {                                                                                                                 \
     if (kr != KERN_SUCCESS) {                                                                                          \
       ERROR_LOG("mach error: %s", mach_error_string(kr));                                                              \
-      DOBBY_RETURN_ERROR(failure);                                                                                     \
+      return failure;                                                                                                  \
     }                                                                                                                  \
   } while (0);
 
@@ -37,16 +38,10 @@ int mprotect_impl(void *addr, size_t len, int prot) {
 }
 #endif
 
-PUBLIC int DobbyCodePatch(void *address, uint8_t *buffer, uint32_t buffer_size) {
+PUBLIC DobbyStatus DobbyCodePatch(void *address, uint8_t *buffer, uint32_t buffer_size) {
   if (address == nullptr || buffer == nullptr || buffer_size == 0) {
     ERROR_LOG("invalid argument");
-    DOBBY_RETURN_ERROR(kDobbyErrorInvalidArgument);
-  }
-
-  // Check for integer overflow: address + buffer_size
-  if ((uintptr_t)address > UINTPTR_MAX - buffer_size) {
-    ERROR_LOG("DobbyCodePatch: address + size overflow (address=%p, size=%u)", address, buffer_size);
-    DOBBY_RETURN_ERROR(kDobbyErrorInvalidArgument);
+    return kDobbyFailed;
   }
 
   size_t page_size = PAGE_SIZE;
@@ -56,9 +51,9 @@ PUBLIC int DobbyCodePatch(void *address, uint8_t *buffer, uint32_t buffer_size) 
   if ((addr_t)address + buffer_size > patch_page + page_size) {
     void *address_a = address;
     uint8_t *buffer_a = buffer;
-    uint32_t buffer_size_a = (patch_page + page_size - (addr_t)address);
+    uint32_t buffer_size_a = (uint32_t)(patch_page + page_size - (addr_t)address);
     auto ret = DobbyCodePatch(address_a, buffer_a, buffer_size_a);
-    if (DOBBY_FAILED(ret)) {
+    if (ret != kDobbySuccess) {
       return ret;
     }
 
@@ -79,7 +74,7 @@ PUBLIC int DobbyCodePatch(void *address, uint8_t *buffer, uint32_t buffer_size) 
   int orig_max_prot = 0;
   int share_mode = 0;
   int is_enable_remap = -1;
-  if (0 && is_enable_remap == -1) {
+  if (is_enable_remap == -1) {
     auto get_region_info = [&](addr_t region_start) -> void {
       vm_region_submap_info_64 region_submap_info;
       mach_msg_type_number_t count = VM_REGION_SUBMAP_INFO_COUNT_64;
@@ -107,11 +102,11 @@ PUBLIC int DobbyCodePatch(void *address, uint8_t *buffer, uint32_t buffer_size) 
       DEBUG_LOG("code patch %p won't use remap", address);
     }
   }
-  if (0 && is_enable_remap == 1) {
+  if (is_enable_remap == 1) {
     addr_t remap_dummy_page = 0;
     {
       kr = mach_vm_allocate(self_task, (mach_vm_address_t *)&remap_dummy_page, page_size, VM_FLAGS_ANYWHERE);
-      KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+      KERN_RETURN_ERROR(kr, kDobbyFailed);
 
       memcpy((void *)remap_dummy_page, (void *)patch_page, page_size);
 
@@ -119,31 +114,32 @@ PUBLIC int DobbyCodePatch(void *address, uint8_t *buffer, uint32_t buffer_size) 
       memcpy((void *)(remap_dummy_page + offset), buffer, buffer_size);
 
       kr = mach_vm_protect(self_task, remap_dummy_page, page_size, false, VM_PROT_READ | VM_PROT_EXECUTE);
-      KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+      KERN_RETURN_ERROR(kr, kDobbyFailed);
     }
 
     vm_prot_t prot, max_prot;
     kr = mach_vm_remap(self_task, (mach_vm_address_t *)&remap_dest_page, page_size, 0,
                        VM_FLAGS_OVERWRITE | VM_FLAGS_FIXED, self_task, remap_dummy_page, true, &prot, &max_prot,
                        VM_INHERIT_COPY);
-    KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+    KERN_RETURN_ERROR(kr, kDobbyFailed);
 
     kr = mach_vm_deallocate(self_task, remap_dummy_page, page_size);
-    KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+    KERN_RETURN_ERROR(kr, kDobbyFailed);
   } else {
+
     if (0) {
       {
         auto kr = mach_vm_allocate(self_task, &remap_dummy_page, page_size, VM_FLAGS_ANYWHERE);
-        KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+        KERN_RETURN_ERROR(kr, kDobbyFailed);
 
         kr = mach_vm_deallocate(self_task, remap_dummy_page, page_size);
-        KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+        KERN_RETURN_ERROR(kr, kDobbyFailed);
       }
 
       vm_prot_t prot, max_prot;
       kr = mach_vm_remap(self_task, &remap_dummy_page, page_size, 0, VM_FLAGS_ANYWHERE, self_task, remap_dest_page,
                          false, &prot, &max_prot, VM_INHERIT_SHARE);
-      KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+      KERN_RETURN_ERROR(kr, kDobbyFailed);
 
       kr = mach_vm_protect(self_task, remap_dummy_page, page_size, false, VM_PROT_READ | VM_PROT_WRITE);
       // the kr always return KERN_PROTECTION_FAILURE
@@ -152,27 +148,26 @@ PUBLIC int DobbyCodePatch(void *address, uint8_t *buffer, uint32_t buffer_size) 
       memcpy((void *)(remap_dummy_page + ((uint64_t)address - remap_dest_page)), buffer, buffer_size);
     }
 
-    static __typeof(vm_protect) *vm_protect_fn = nullptr;
-    if (vm_protect_fn == nullptr) {
-      vm_protect_fn = (__typeof(vm_protect) *)DobbySymbolResolver("dyld", "vm_protect");
-      if (vm_protect_fn == nullptr) {
-        vm_protect_fn = (__typeof(vm_protect) *)DobbySymbolResolver("libsystem_kernel.dylib", "_vm_protect");
+    static __typeof(vm_protect) *vm_protect_impl = nullptr;
+    if (vm_protect_impl == nullptr) {
+      vm_protect_impl = (__typeof(vm_protect) *)DobbySymbolResolver("dyld", "vm_protect");
+      if (vm_protect_impl == nullptr) {
+        vm_protect_impl = (__typeof(vm_protect) *)DobbySymbolResolver("libsystem_kernel.dylib", "_vm_protect");
       }
-      pac_sign(vm_protect_fn);
+      vm_protect_impl = (__typeof(vm_protect) *)pac_sign((void *)vm_protect_impl);
     }
     {
-      kr = vm_protect_fn(self_task, remap_dest_page, page_size, false, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
-      KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+      kr = vm_protect_impl(self_task, remap_dest_page, page_size, false, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+      KERN_RETURN_ERROR(kr, kDobbyFailed);
 
       memcpy((void *)(patch_page + ((uint64_t)address - remap_dest_page)), buffer, buffer_size);
 
-      kr = vm_protect_fn(self_task, remap_dest_page, page_size, false, VM_PROT_READ | VM_PROT_EXECUTE);
-      KERN_RETURN_ERROR(kr, kDobbyErrorMemoryOperation);
+      kr = vm_protect_impl(self_task, remap_dest_page, page_size, false, orig_prot);
+      KERN_RETURN_ERROR(kr, kDobbyFailed);
     }
   }
 
   ClearCache(address, (void *)((addr_t)address + buffer_size));
 
-  DobbySetLastError(kDobbySuccess);
   return kDobbySuccess;
 }
