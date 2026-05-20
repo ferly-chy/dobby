@@ -20,13 +20,10 @@ void pre_call_forward_handler(DobbyRegisterContext *ctx, InterceptEntry *entry) 
 
   // run the `pre_call` before execute origin function which has been relocated(fixed)
   if (routing->pre_call) {
-    PreCallTy pre_call;
-    InterceptEntry entry;
-    entry.hook_id = entry->id;
-    entry.target_address = entry->target_address;
-    pre_call = routing->pre_call;
+    PreCallTy pre_call = routing->pre_call;
+    InterceptEntry callback_entry = *entry;
     // run the pre_call with the power of accessing all registers
-    (*pre_call)(ctx, (const InterceptEntry *)&entry);
+    (*pre_call)(ctx, (const InterceptEntry *)&callback_entry);
   }
 
   // save the origin ret address, and use in `post_call_forword_handler`
@@ -47,14 +44,11 @@ void post_call_forward_handler(DobbyRegisterContext *ctx, InterceptEntry *entry)
 
   // run the `post_call`, and access all the register value, as the origin function done,
   if (routing->post_call) {
-    PostCallTy post_call;
-    InterceptEntry entry;
-    entry.hook_id = entry->id;
-    entry.target_address = entry->target_address;
-    post_call = routing->post_call;
+    PostCallTy post_call = routing->post_call;
+    InterceptEntry callback_entry = *entry;
 
     // run the post_call with the power of accessing all registers
-    (*post_call)(ctx, (const InterceptEntry *)&entry);
+    (*post_call)(ctx, (const InterceptEntry *)&callback_entry);
   }
 
   // set epilogue bridge next hop address with origin ret address, restore the call.
@@ -62,17 +56,23 @@ void post_call_forward_handler(DobbyRegisterContext *ctx, InterceptEntry *entry)
 }
 
 // run the user handler **before run the origin-instructions(which have been relocated)**
-void prologue_routing_dispatch(DobbyRegisterContext *ctx, ClosureTrampolineEntry *closure_trampoline_entry) {
+void prologue_routing_dispatch(void *carry_data, DobbyRegisterContext *ctx) {
   DEBUG_LOG("Catch prologue dispatch");
-  InterceptEntry *entry = static_cast<InterceptEntry *>(closure_trampoline_entry->carry_data);
+  auto *entry = static_cast<InterceptEntry *>(carry_data);
+  if (entry == nullptr) {
+    return;
+  }
   pre_call_forward_handler(ctx, entry);
   return;
 }
 
 // run the user handler **before the function return** by replace the lr register
-void epilogue_routing_dispatch(DobbyRegisterContext *ctx, ClosureTrampolineEntry *closure_trampoline_entry) {
+void epilogue_routing_dispatch(void *carry_data, DobbyRegisterContext *ctx) {
   DEBUG_LOG("Catch epilogue dispatch");
-  InterceptEntry *entry = static_cast<InterceptEntry *>(closure_trampoline_entry->carry_data);
+  auto *entry = static_cast<InterceptEntry *>(carry_data);
+  if (entry == nullptr) {
+    return;
+  }
   post_call_forward_handler(ctx, entry);
   return;
 }

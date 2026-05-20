@@ -103,8 +103,12 @@ include_directories(
   ./include
   ./source
   source/dobby
-
-  ./builtin-plugin
+  ./builtin-plugin/SymbolResolver
+  ./vendor/fmt/include
+  ./vendor/spdlog/include
+  ./vendor/json/include
+  ./vendor/tomlplusplus/include
+  ./vendor/elfio
 )
 
 # ---
@@ -219,7 +223,6 @@ endif ()
 # ---
 
 if (Plugin.SymbolResolver)
-  include_directories(builtin-plugin/SymbolResolver)
   add_subdirectory(builtin-plugin/SymbolResolver)
   get_target_property(symbol_resolver.SOURCE_FILE_LIST dobby_symbol_resolver SOURCES)
   set(dobby.plugin.SOURCE_FILE_LIST ${dobby.plugin.SOURCE_FILE_LIST}
@@ -227,6 +230,8 @@ if (Plugin.SymbolResolver)
     source/Plugins/ApplicationEventMonitor/PosixFileMonitor.cc
     source/Plugins/ApplicationEventMonitor/PosixSocketMonitor.cc
     source/Plugins/ApplicationEventMonitor/DynamicLoaderMonitor.cc
+    source/Plugins/PluginManager.cc
+    source/Config/Config.cc
     )
 endif ()
 
@@ -320,9 +325,15 @@ set_target_properties(dobby_static
   )
 
 target_compile_definitions(dobby PRIVATE
+  SPDLOG_NO_EXCEPTIONS
+  SPDLOG_FMT_EXTERNAL
+  FMT_USE_EXCEPTIONS=0
   "COMPILE_DEFINITIONS ${compile_definitions}"
   )
 target_compile_definitions(dobby_static PRIVATE
+  SPDLOG_NO_EXCEPTIONS
+  SPDLOG_FMT_EXTERNAL
+  FMT_USE_EXCEPTIONS=0
   "COMPILE_DEFINITIONS ${compile_definitions}"
   )
 

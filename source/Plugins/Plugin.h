@@ -1,9 +1,11 @@
 #pragma once
 
-#include <string>
 #include <expected>
 #include <memory>
+#include <string>
 #include <vector>
+
+#include "Config/Config.h"
 
 namespace dobby {
 
@@ -30,22 +32,23 @@ public:
 
 class PluginManager {
 public:
-    static PluginManager& Instance() {
-        static PluginManager instance;
-        return instance;
-    }
+    static PluginManager& Instance();
 
-    void Register(std::unique_ptr<Plugin> plugin) {
-        plugins_.push_back(std::move(plugin));
-    }
+    void Register(std::unique_ptr<Plugin> plugin);
+    [[nodiscard]] std::expected<void, PluginError> LoadAll();
+    [[nodiscard]] std::expected<void, PluginError> EnableAll();
+    [[nodiscard]] std::expected<void, PluginError> ConfigureFrom(const DobbyConfig& config);
+    void DisableAll();
+    void UnloadAll();
+    void Reset();
 
-    const std::vector<std::unique_ptr<Plugin>>& GetPlugins() const {
-        return plugins_;
-    }
+    const std::vector<std::unique_ptr<Plugin>>& GetPlugins() const;
 
 private:
     PluginManager() = default;
     std::vector<std::unique_ptr<Plugin>> plugins_;
 };
+
+std::expected<void, PluginError> DobbyInitializePluginsFromConfig(const char* config_path);
 
 } // namespace dobby

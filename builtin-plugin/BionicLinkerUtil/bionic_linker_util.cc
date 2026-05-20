@@ -15,7 +15,7 @@
 #include <set>
 
 #include "dobby.h"
-#include "dobby_symbol_resolver.h"
+#include "builtin-plugin/SymbolResolver/dobby_symbol_resolver.h"
 
 #include "dobby/common.h"
 

@@ -1,5 +1,6 @@
 #include "dobby/dobby_internal.h"
 #include "Interceptor.h"
+#include "Plugins/Plugin.h"
 
 __attribute__((constructor)) static void ctor() {
   DEBUG_LOG("================================");
@@ -10,6 +11,14 @@ __attribute__((constructor)) static void ctor() {
 
 PUBLIC const char *DobbyGetVersion() {
   return "";
+}
+
+PUBLIC DobbyStatus DobbyInitializePlugins(const char *config_path) {
+  auto result = dobby::DobbyInitializePluginsFromConfig(config_path);
+  if (!result) {
+    return kDobbyFailed;
+  }
+  return kDobbySuccess;
 }
 
 PUBLIC DobbyStatus DobbyDestroy(void *address) {

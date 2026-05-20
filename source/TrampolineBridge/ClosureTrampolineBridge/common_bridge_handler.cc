@@ -7,15 +7,22 @@
 #include "TrampolineBridge/ClosureTrampolineBridge/ClosureTrampoline.h"
 
 void common_closure_bridge_handler(DobbyRegisterContext *ctx, ClosureTrampolineEntry *closure_trampoline_entry) {
-  InterceptEntry *entry = (InterceptEntry *)closure_trampoline_entry->carry_data;
+  if (closure_trampoline_entry == nullptr || closure_trampoline_entry->carry_kind != kClosureCarryKindRouteEntry) {
+    return;
+  }
+
+  auto *entry = static_cast<InterceptEntry *>(closure_trampoline_entry->carry_data);
+  if (entry == nullptr) {
+    return;
+  }
+
+  if (closure_trampoline_entry->carry_handler != nullptr) {
+    closure_trampoline_entry->carry_handler(closure_trampoline_entry->carry_data, ctx);
+    return;
+  }
 
   if (entry->type == kFunctionInlineHook) {
     // nothing to do
-  } else if (entry->type == kInstructionInstrument) {
-    dobby_instrument_callback_t pre_handler = (dobby_instrument_callback_t)closure_trampoline_entry->carry_handler;
-    if (pre_handler) {
-      pre_handler((void *)entry->patched_addr, ctx);
-    }
   }
 
   set_routing_bridge_next_hop(ctx, entry->relocated_addr);

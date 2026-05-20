@@ -2,6 +2,11 @@ set(SOURCE_FILE_LIST)
 
 include_directories(
   .
+  ${DOBBY_DIR}/builtin-plugin/SymbolResolver
+  ${DOBBY_DIR}/source
+  ${DOBBY_DIR}/include
+  ${DOBBY_DIR}/vendor/fmt/include
+  ${DOBBY_DIR}/vendor/spdlog/include
 )
 
 if (NOT DEFINED DOBBY_DIR)
@@ -24,6 +29,12 @@ set(SOURCE_FILE_LIST ${SOURCE_FILE_LIST_})
 add_library(dobby_symbol_resolver
   ${SOURCE_FILE_LIST}
   )
+
+target_compile_definitions(dobby_symbol_resolver PUBLIC
+  SPDLOG_NO_EXCEPTIONS
+  SPDLOG_FMT_EXTERNAL
+  FMT_USE_EXCEPTIONS=0
+)
 
 target_link_libraries(dobby_symbol_resolver PUBLIC logging fmt::fmt)
 

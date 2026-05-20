@@ -15,7 +15,8 @@ void FunctionWrapperRouting::DispatchRouting() {
 // Add pre_call(prologue) handler before running the origin function,
 void FunctionWrapperRouting::BuildPreCallRouting() {
   // create closure trampoline jump to prologue_routing_dispath with the `entry_` data
-  ClosureTrampolineEntry *cte = ClosureTrampoline::CreateClosureTrampoline(entry_, (void *)prologue_routing_dispatch);
+  ClosureTrampolineEntry *cte =
+      ClosureTrampoline::CreateClosureTrampoline(entry_, prologue_routing_dispatch, kClosureCarryKindRouteEntry);
   this->prologue_dispatch_bridge = cte->address;
 
   DEBUG_LOG("Create pre call closure trampoline to 'prologue_routing_dispatch' at %p", cte->address);
@@ -27,7 +28,8 @@ void FunctionWrapperRouting::BuildPostCallRouting() {
   // create closure trampoline jump to prologue_routing_dispath with the `entry_` data
   ClosureTrampolineEntry *closure_trampoline_entry;
   // format trampoline
-  closure_trampoline_entry = ClosureTrampoline::CreateClosureTrampoline(entry_, (void *)epilogue_routing_dispatch);
+  closure_trampoline_entry =
+      ClosureTrampoline::CreateClosureTrampoline(entry_, epilogue_routing_dispatch, kClosureCarryKindRouteEntry);
   DEBUG_LOG("Create post call closure trampoline to 'prologue_routing_dispatch' at %p",
             closure_trampoline_entry->address);
 

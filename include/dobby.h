@@ -218,8 +218,16 @@ const char *DobbyGetVersion();
 void *DobbySymbolResolver(const char *image_name, const char *symbol_name);
 
 /**
+ * @brief Initialize plugins from a TOML configuration file.
+ *
+ * @param config_path Path to the TOML config file.
+ * @return kDobbySuccess on success.
+ */
+DobbyStatus DobbyInitializePlugins(const char *config_path);
+
+/**
  * @brief Replace an entry in the import table.
- * 
+ *
  * @param image_name Target image.
  * @param symbol_name Symbol to replace.
  * @param fake_func Address of the fake function.

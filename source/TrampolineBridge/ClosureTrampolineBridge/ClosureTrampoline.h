@@ -1,5 +1,7 @@
 #pragma once
 
+#include <type_traits>
+
 #include "dobby/dobby_internal.h"
 
 #ifdef ENABLE_CLOSURE_TRAMPOLINE_TEMPLATE
@@ -17,11 +19,19 @@ void closure_bridge_template();
 extern "C" {
 #endif //__cplusplus
 
+typedef void (*ClosureCarryHandler)(void *carry_data, DobbyRegisterContext *ctx);
+
+typedef enum {
+  kClosureCarryKindInvalid = 0,
+  kClosureCarryKindRouteEntry,
+} ClosureCarryKind;
+
 typedef struct {
   void *address;
   int size;
-  void *carry_handler;
+  ClosureCarryHandler carry_handler;
   void *carry_data;
+  ClosureCarryKind carry_kind;
 } ClosureTrampolineEntry;
 
 asm_func_t get_closure_bridge();
@@ -31,9 +41,15 @@ asm_func_t get_closure_bridge();
 #endif //__cplusplus
 
 class ClosureTrampoline {
-private:
-  static std::vector<ClosureTrampolineEntry> *trampolines_;
-
 public:
-  static ClosureTrampolineEntry *CreateClosureTrampoline(void *carry_data, void *carry_handler);
+  template <typename CarryData>
+  static ClosureTrampolineEntry *CreateClosureTrampoline(CarryData *carry_data, ClosureCarryHandler carry_handler,
+                                                         ClosureCarryKind carry_kind) {
+    static_assert(!std::is_function_v<CarryData>, "Carry data must be an object pointer");
+    return CreateClosureTrampolineImpl(static_cast<void *>(carry_data), carry_handler, carry_kind);
+  }
+
+private:
+  static ClosureTrampolineEntry *CreateClosureTrampolineImpl(void *carry_data, ClosureCarryHandler carry_handler,
+                                                             ClosureCarryKind carry_kind);
 };

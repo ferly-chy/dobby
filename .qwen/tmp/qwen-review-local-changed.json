@@ -1,0 +1,22 @@
+[
+  "CMakeLists.txt",
+  "builtin-plugin/BionicLinkerUtil/bionic_linker_util.cc",
+  "builtin-plugin/SymbolResolver/CMakeLists.txt",
+  "builtin-plugin/SymbolResolver/elf/dobby_symbol_resolver.cc",
+  "include/dobby.h",
+  "source/InterceptRouting/Routing/FunctionWrapper/function-wrapper.cc",
+  "source/InterceptRouting/Routing/FunctionWrapper/intercept_routing_handler.cc",
+  "source/InterceptRouting/Routing/FunctionWrapper/intercept_routing_handler.h",
+  "source/InterceptRouting/Routing/InstructionInstrument/RoutingImpl.cc",
+  "source/InterceptRouting/Routing/InstructionInstrument/instrument_routing_handler.cc",
+  "source/InterceptRouting/Routing/InstructionInstrument/instrument_routing_handler.h",
+  "source/Plugins/Plugin.h",
+  "source/TrampolineBridge/ClosureTrampolineBridge/ClosureTrampoline.h",
+  "source/TrampolineBridge/ClosureTrampolineBridge/arm/ClosureTrampolineARM.cc",
+  "source/TrampolineBridge/ClosureTrampolineBridge/arm64/ClosureTrampolineARM64.cc",
+  "source/TrampolineBridge/ClosureTrampolineBridge/common_bridge_handler.cc",
+  "source/TrampolineBridge/ClosureTrampolineBridge/x64/ClosureTrampolineX64.cc",
+  "source/TrampolineBridge/ClosureTrampolineBridge/x86/ClosureTrampolineX86.cc",
+  "source/dobby.cpp",
+  "todo.md"
+]

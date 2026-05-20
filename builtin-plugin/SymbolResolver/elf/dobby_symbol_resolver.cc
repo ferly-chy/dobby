@@ -1,4 +1,4 @@
-#include "SymbolResolver/dobby_symbol_resolver.h"
+#include "builtin-plugin/SymbolResolver/dobby_symbol_resolver.h"
 #include "Plugins/SymbolResolver/ElfSymbolResolver.h"
 #include "PlatformUtil/ProcessRuntimeUtility.h"
 #include <dlfcn.h>

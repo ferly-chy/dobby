@@ -15,6 +15,10 @@ void instrument_forward_handler(InterceptEntry *entry, DobbyRegisterContext *ctx
   set_routing_bridge_next_hop(ctx, entry->relocated_addr);
 }
 
-void instrument_routing_dispatch(InterceptEntry *entry, DobbyRegisterContext *ctx) {
+void instrument_routing_dispatch(void *carry_data, DobbyRegisterContext *ctx) {
+  auto *entry = static_cast<InterceptEntry *>(carry_data);
+  if (entry == nullptr) {
+    return;
+  }
   instrument_forward_handler(entry, ctx);
 }

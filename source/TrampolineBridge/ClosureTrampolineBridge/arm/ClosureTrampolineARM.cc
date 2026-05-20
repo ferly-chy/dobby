@@ -10,7 +10,8 @@
 using namespace zz;
 using namespace zz::arm;
 
-ClosureTrampolineEntry *ClosureTrampoline::CreateClosureTrampoline(void *carry_data, void *carry_handler) {
+ClosureTrampolineEntry *ClosureTrampoline::CreateClosureTrampolineImpl(void *carry_data, ClosureCarryHandler carry_handler,
+                                                                       ClosureCarryKind carry_kind) {
   ClosureTrampolineEntry *tramp_entry = nullptr;
   tramp_entry = new ClosureTrampolineEntry;
 
@@ -39,6 +40,7 @@ ClosureTrampolineEntry *ClosureTrampoline::CreateClosureTrampoline(void *carry_d
   tramp_entry->size = closure_tramp->size;
   tramp_entry->carry_data = carry_data;
   tramp_entry->carry_handler = carry_handler;
+  tramp_entry->carry_kind = carry_kind;
 
   delete closure_tramp;
 
