@@ -1,18 +1,21 @@
-## Dobby-Fork android
+## Dobby-Fork Android
 
-Dobby a lightweight exploit hook framework.
+Dobby is a lightweight, modular exploit hook framework, now modernized and specialized exclusively for Android.
 
-- Minimal and modular library
-- Android only!
-- Multiple architecture support(X86, X86-64, ARM, ARM64)
+### Key Features
+- **Android Exclusive:** Streamlined and optimized for the Android ecosystem.
+- **Multi-Architecture Support:** Fully supports ARM, ARM64, X86, and X86-64.
+- **Modern C++:** Built using the latest C++ standards (C++23/26).
+- **Lightweight & Modular:** Minimal overhead with a plugin-based architecture.
 
-## Download
-[download latest library](https://github.com/ferly-chy/dobby/releases)
+### Documentation
+- [How to compile](docs/compile.md)
 
-## Credits
+### Credits
+This project is built upon the incredible work of:
 1. [frida-gum](https://github.com/frida/frida-gum)
 2. [minhook](https://github.com/TsudaKageyu/minhook)
-3. [substrate](https://github.com/jevinskie/substrate).
+3. [substrate](https://github.com/jevinskie/substrate)
 4. [v8](https://github.com/v8/v8)
 5. [dart](https://github.com/dart-lang/sdk)
 6. [vixl](https://git.linaro.org/arm/vixl.git)

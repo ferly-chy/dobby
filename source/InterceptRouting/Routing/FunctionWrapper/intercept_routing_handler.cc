@@ -6,7 +6,6 @@
 #include "intercept_routing_handler.h"
 
 #include "function-wrapper.h"
-#include "intercept_routing_handler.h"
 
 #include "MultiThreadSupport/ThreadSupport.h"
 

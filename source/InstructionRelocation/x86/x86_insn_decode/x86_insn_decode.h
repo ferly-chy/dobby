@@ -2,7 +2,7 @@
 #define X86_INSN_DECODE_H
 
 #include <stdint.h>
-#include "dobby/common.h"
+#include "x86_insn_decode_support.h"
 
 typedef enum {
   X86_INSN_SPEC_DEFAULT_64_BIT = 1 << 0,

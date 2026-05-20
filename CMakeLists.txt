@@ -2,22 +2,42 @@ cmake_minimum_required(VERSION 3.10)
 project(Dobby)
 enable_language(ASM)
 
-include(FetchContent)
-FetchContent_Declare(
-  fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-  GIT_TAG        12.1.0 # Versi terbaru stabil
-)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
 set(FMT_TEST OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(fmt)
-FetchContent_GetProperties(fmt)
+
+set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_PIC ON CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_EXAMPLE_HO OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_TESTS_HO OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+set(SPDLOG_USE_STD_FORMAT OFF CACHE BOOL "" FORCE)
+set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "" FORCE)
+set(SPDLOG_NO_EXCEPTIONS ON CACHE BOOL "" FORCE)
+
+set(JSON_Install OFF CACHE BOOL "" FORCE)
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ELFIO_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ELFIO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(vendor/fmt)
+add_subdirectory(vendor/spdlog)
+add_subdirectory(vendor/json)
+add_subdirectory(vendor/tomlplusplus)
+add_subdirectory(vendor/elfio)
 
 include(cmake/Util.cmake)
+
 include(cmake/Macros.cmake)
 include(cmake/build_environment_check.cmake)
 include(cmake/auto_source_group.cmake)
-include(cmake/xcode_generator_helper.cmake)
+#include(cmake/xcode_generator_helper.cmake)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 26)
@@ -44,14 +64,11 @@ option(DOBBY_BUILD_EXAMPLE "Build example" OFF)
 option(DOBBY_BUILD_TEST "Build test" OFF)
 
 # --- private
-option(DOBBY_BUILD_KERNEL_MODE "Build xnu kernel mode" OFF)
-
 option(Private.Obfuscation "Enable llvm obfuscation" OFF)
 
 if ((NOT DEFINED CMAKE_BUILD_TYPE) OR (CMAKE_BUILD_TYPE STREQUAL "Debug"))
   set(DOBBY_DEBUG ON)
 endif ()
-
 
 set(compile_definitions "")
 
@@ -60,17 +77,10 @@ if (FullFloatingPointRegisterPack)
   set(compile_definitions "${compile_definitions} -DFULL_FLOATING_POINT_REGISTER_PACK")
 endif ()
 
-if (DOBBY_BUILD_KERNEL_MODE)
-  set(compile_definitions "${compile_definitions} -DBUILDING_KERNEL")
-endif ()
-
 if (DOBBY_DEBUG)
   set(compile_definitions "${compile_definitions} -DDOBBY_DEBUG")
 else ()
   set(compile_definitions "${compile_definitions} -DDOBBY_LOGGING_DISABLE")
-endif ()
-
-if (CMAKE_GENERATOR STREQUAL Xcode)
 endif ()
 
 include(cmake/compiler_and_linker.cmake)
@@ -84,7 +94,6 @@ message(STATUS "[Dobby] Plugin.ImportTableReplace: ${Plugin.ImportTableReplace}"
 message(STATUS "[Dobby] Plugin.Android.BionicLinkerUtil: ${Plugin.Android.BionicLinkerUtil}")
 message(STATUS "[Dobby] DOBBY_BUILD_EXAMPLE: ${DOBBY_BUILD_EXAMPLE}")
 message(STATUS "[Dobby] DOBBY_BUILD_TEST: ${DOBBY_BUILD_TEST}")
-message(STATUS "[Dobby] DOBBY_BUILD_KERNEL_MODE: ${DOBBY_BUILD_KERNEL_MODE}")
 message(STATUS "[Dobby] Private.Obfuscation: ${Private.Obfuscation}")
 
 # ---
@@ -95,17 +104,8 @@ include_directories(
   ./source
   source/dobby
 
-  ./external
-  ./external/logging
-
   ./builtin-plugin
 )
-
-if (SYSTEM.Darwin AND (NOT DOBBY_BUILD_KERNEL_MODE))
-  include_directories(
-    source/Backend/UserMode
-  )
-endif ()
 
 # ---
 
@@ -184,33 +184,13 @@ set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
   source/InterceptEntry.cpp
   )
 
-
-if (SYSTEM.Darwin AND NOT DOBBY_BUILD_KERNEL_MODE)
+if (SYSTEM.Android OR SYSTEM.Linux)
   set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
-    source/Backend/UserMode/PlatformUtil/Darwin/ProcessRuntimeUtility.cc
-
-    source/Backend/UserMode/UnifiedInterface/platform-posix.cc
-
-    source/Backend/UserMode/ExecMemory/code-patch-tool-darwin.cc
-    source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
-    )
-
-elseif (SYSTEM.Linux OR SYSTEM.Android)
-  set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
-    source/Backend/UserMode/PlatformUtil/Linux/ProcessRuntimeUtility.cc
+    source/Backend/UserMode/PlatformUtil/Android/ProcessRuntimeUtility.cc
 
     source/Backend/UserMode/UnifiedInterface/platform-posix.cc
 
     source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc
-    source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
-    )
-elseif (SYSTEM.Windows)
-  set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
-    source/Backend/UserMode/PlatformUtil/Windows/ProcessRuntimeUtility.cc
-
-    source/Backend/UserMode/UnifiedInterface/platform-windows.cc
-
-    source/Backend/UserMode/ExecMemory/code-patch-tool-windows.cc
     source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
     )
 endif ()
@@ -221,25 +201,9 @@ endif ()
 
 # ---
 
-if (0 AND SYSTEM.iOS AND (NOT DOBBY_BUILD_KERNEL_MODE))
-  include_directories(
-    source/Backend/UserMode/ExecMemory/substrated
-  )
-  set(compile_definitions "${compile_definitions} -DCODE_PATCH_WITH_SUBSTRATED")
-  set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
-    source/Backend/UserMode/ExecMemory/substrated/mach_interface_support
-    )
-endif ()
-
 # ----- instrument -----
 
 if (FunctionWrapper)
-  set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
-    # user mode - multi thread support
-    # source/UserMode/MultiThreadSupport/ThreadSupport.cpp
-    # source/UserMode/Thread/PlatformThread.cc
-    # source/UserMode/Thread/platform-thread-${platform1}.cc
-    )
   message(FATAL_ERROR "[!] FunctionWrapper plugin is not supported")
 endif ()
 
@@ -254,21 +218,15 @@ endif ()
 
 # ---
 
-# add logging library
-add_subdirectory(external/logging)
-get_target_property(logging.SOURCE_FILE_LIST logging SOURCES)
-
-# add osbase library
-add_subdirectory(external/osbase)
-
-# ---
-
 if (Plugin.SymbolResolver)
   include_directories(builtin-plugin/SymbolResolver)
   add_subdirectory(builtin-plugin/SymbolResolver)
   get_target_property(symbol_resolver.SOURCE_FILE_LIST dobby_symbol_resolver SOURCES)
   set(dobby.plugin.SOURCE_FILE_LIST ${dobby.plugin.SOURCE_FILE_LIST}
     ${symbol_resolver.SOURCE_FILE_LIST}
+    source/Plugins/ApplicationEventMonitor/PosixFileMonitor.cc
+    source/Plugins/ApplicationEventMonitor/PosixSocketMonitor.cc
+    source/Plugins/ApplicationEventMonitor/DynamicLoaderMonitor.cc
     )
 endif ()
 
@@ -301,7 +259,6 @@ message(STATUS "[Dobby] ${DOBBY_BUILD_VERSION}")
 set(SOURCE_FILE_LIST
   ${dobby.HEADER_FILE_LIST}
   ${dobby.SOURCE_FILE_LIST}
-  ${logging.SOURCE_FILE_LIST}
   ${dobby.plugin.SOURCE_FILE_LIST}
   )
 
@@ -314,11 +271,10 @@ add_library(dobby SHARED
 
 target_compile_features(dobby PRIVATE cxx_std_26)
 
-target_link_libraries(dobby PRIVATE fmt::fmt ${dobby.plugin.LIBS})
+target_link_libraries(dobby PRIVATE fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json tomlplusplus::tomlplusplus elfio::elfio ${dobby.plugin.LIBS})
 
 target_include_directories(dobby PUBLIC
   include
-  ${fmt_SOURCE_DIR}/include
   )
 
 # ---
@@ -329,11 +285,10 @@ add_library(dobby_static STATIC
 
 target_compile_features(dobby_static PRIVATE cxx_std_26)
 
-target_link_libraries(dobby_static PRIVATE fmt::fmt ${dobby.plugin.LIBS})
+target_link_libraries(dobby_static PRIVATE fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json tomlplusplus::tomlplusplus elfio::elfio ${dobby.plugin.LIBS})
 
 target_include_directories(dobby_static PUBLIC
   include
-  ${fmt_SOURCE_DIR}/include
   )
 
 set_target_properties(dobby_static
@@ -399,16 +354,11 @@ endif ()
 
 # ---
 
-if (DOBBY_BUILD_EXAMPLE AND (NOT DOBBY_BUILD_KERNEL_MODE))
+if (DOBBY_BUILD_EXAMPLE)
   add_subdirectory(examples)
 endif ()
 
-if (DOBBY_BUILD_TEST AND (NOT DOBBY_BUILD_KERNEL_MODE))
+if (DOBBY_BUILD_TEST)
   add_subdirectory(tests)
 endif ()
 
-# ---
-
-if (SYSTEM.Darwin AND (NOT DOBBY_BUILD_KERNEL_MODE))
-  include(cmake/platform/platform-darwin.cmake)
-endif ()

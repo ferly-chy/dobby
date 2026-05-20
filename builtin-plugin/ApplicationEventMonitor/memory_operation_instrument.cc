@@ -6,18 +6,14 @@
 
 static uintptr_t getCallFirstArg(DobbyRegisterContext *ctx) {
   uintptr_t result;
-#if defined(_M_X64) || defined(__x86_64__)
-#if defined(_WIN32)
-  result = ctx->general.regs.rcx;
-#else
+#if defined(__x86_64__) || defined(_M_X64)
   result = ctx->general.regs.rdi;
-#endif
 #elif defined(__arm64__) || defined(__aarch64__)
   result = ctx->general.regs.x0;
 #elif defined(__arm__)
   result = ctx->general.regs.r0;
 #else
-#error "Not Support Architecture."
+#error "Unsupported architecture"
 #endif
   return result;
 }

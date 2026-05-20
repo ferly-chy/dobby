@@ -10,18 +10,8 @@ PUBLIC DobbyStatus DobbyInstrument(void *address, dobby_instrument_callback_t pr
     return kDobbyFailed;
   }
 
-#if defined(__APPLE__) && defined(__arm64__)
-  address = pac_strip(address);
-#endif
-
-#if defined(ANDROID)
-  void *page_align_address = (void *)ALIGN_FLOOR(address, OSMemory::PageSize());
-  if (!OSMemory::SetPermission(page_align_address, OSMemory::PageSize(), kReadExecute)) {
-    return kDobbyFailed;
-  }
-#endif
-
   DEBUG_LOG("\n\n----- [DobbyInstrument:%p] -----", address);
+
 
   auto entry_opt = Interceptor::SharedInstance()->find((addr_t)address);
   if (entry_opt) {

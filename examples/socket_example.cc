@@ -1,5 +1,4 @@
 #include "dobby.h"
-
 #include "logging/logging.h"
 
 #include <stdlib.h>
@@ -16,16 +15,12 @@ std::map<void *, const char *> *func_map;
 
 // clang-format off
 const char *func_array[] = {
-//   "__loader_dlopen",
-
   "dlsym",
   "dlclose",
-
   "open",
   "write",
   "read",
   "close",
-
   "socket",
   "connect",
   "bind",
@@ -33,8 +28,6 @@ const char *func_array[] = {
   "accept",
   "send",
   "recv",
-
-  // "pthread_create"
 };
 
 const char *func_short_array[] = {
@@ -42,29 +35,20 @@ const char *func_short_array[] = {
 };
 // clang-format on
 
-#define pac_strip(symbol)
-#if defined(__APPLE__) && __arm64e__
-#if __has_feature(ptrauth_calls)
-#define pac_strip(symbol)
-//#define pac_strip(symbol) *(void **)&symbol = (void *)ptrauth_sign_unauthenticated((void *)symbol, ptrauth_key_asia, 0)
-#endif
-#endif
-
 #define install_hook(name, fn_ret_t, fn_args_t...)                                                                     \
   fn_ret_t (*orig_##name)(fn_args_t);                                                                                  \
   fn_ret_t fake_##name(fn_args_t);                                                                                     \
-  /* __attribute__((constructor)) */ static void install_hook_##name() {                                               \
+  static void install_hook_##name() {                                                                                  \
     void *sym_addr = DobbySymbolResolver(NULL, #name);                                                                 \
-    DobbyHook(sym_addr, (cum_il_pussy_x)fake_##name, (cum_il_pussy_x *)&orig_##name);                          \
-    pac_strip(orig_##name);                                                                                            \
+    DobbyHook(sym_addr, (dobby_func_t)fake_##name, (dobby_func_t *)&orig_##name);                          \
     printf("install hook %s:%p:%p\n", #name, sym_addr, orig_##name);                                                   \
   }                                                                                                                    \
   fn_ret_t fake_##name(fn_args_t)
 
 install_hook(pthread_create, int, pthread_t *thread, const pthread_attr_t *attrs, void *(*start_routine)(void *),
-             void *arg, unsigned int create_flags) {
+             void *arg) {
   INFO_LOG("pthread_create: %p", start_routine);
-  return orig_pthread_create(thread, attrs, start_routine, arg, create_flags);
+  return orig_pthread_create(thread, attrs, start_routine, arg);
 }
 
 void common_handler(void *address, DobbyRegisterContext *ctx) {
@@ -75,10 +59,7 @@ void common_handler(void *address, DobbyRegisterContext *ctx) {
 }
 
 uint64_t socket_demo_server(void *ctx);
-
 uint64_t socket_demo_client(void *ctx);
-
-#if 1
 
 __attribute__((constructor)) static void ctor() {
   logger_set_options(0, 0, 0, LOG_LEVEL_DEBUG, false, false);
@@ -111,26 +92,18 @@ __attribute__((constructor)) static void ctor() {
     }
   }
 
-#if defined(__APPLE__)
-  // DobbyImportTableReplace(NULL, "_pthread_create", (void *)fake_pthread_create, (void **)&orig_pthread_create);
-#endif
-
-  // install_hook_pthread_create();
-
   pthread_t socket_server;
   pthread_create(&socket_server, NULL, (void *(*)(void *))socket_demo_server, NULL);
 
   usleep(10000);
   pthread_t socket_client;
   pthread_create(&socket_client, NULL, (void *(*)(void *))socket_demo_client, NULL);
-
-  //   pthread_join(socket_client, 0);
-  //   pthread_join(socket_server, 0);
 }
 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <errno.h>
 
 #define PORT 49494
 
@@ -140,7 +113,7 @@ uint64_t socket_demo_server(void *ctx) {
   int opt = 1;
   int addrlen = sizeof(address);
   char buffer[1024] = {0};
-  char *hello = "Hello from server";
+  const char *hello = "Hello from server";
 
   if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
     ERROR_LOG("socket failed: %s", strerror(errno));
@@ -180,7 +153,7 @@ uint64_t socket_demo_server(void *ctx) {
 uint64_t socket_demo_client(void *ctx) {
   int sock = 0;
   struct sockaddr_in serv_addr;
-  char *hello = "Hello from client";
+  const char *hello = "Hello from client";
   char buffer[1024] = {0};
   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
     ERROR_LOG("socket failed");
@@ -190,7 +163,6 @@ uint64_t socket_demo_client(void *ctx) {
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_port = htons(PORT);
 
-  // Convert IPv4 and IPv6 addresses from text to binary form
   if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
     ERROR_LOG("inet_pton failed");
     return -1;
@@ -208,5 +180,3 @@ uint64_t socket_demo_client(void *ctx) {
   INFO_LOG("[client] %s", buffer);
   return 0;
 }
-
-#endif

@@ -8,7 +8,7 @@
 #include "dobby/pac_kit.h"
 
 #include "logging/logging.h"
-#include "logging/check_logging.h"
+#include "base/check_logging.h"
 
 #ifdef __cplusplus
 #include <fmt/format.h>

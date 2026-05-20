@@ -1,19 +1,8 @@
 #if defined(ENABLE_CLOSURE_BRIDGE_TEMPLATE)
 
-#if defined(__WIN32__) || defined(__APPLE__)
-#define xcdecl(s) "_" s
-#else
-#define xcdecl(s) s
-#endif
-
 #define xASM(x) __asm(x)
 
 __attribute__((naked)) void closure_bridge_template() {
-  // DO NOT USE prologue
-  // x29 == fp, x30 == lr
-  // xASM("stp x29, x30, [sp, #-16]!");
-  // xASM("mov x29, sp");
-
   // save {q0-q7}
   xASM("sub sp, sp, #(8*16)");
   xASM("stp q6, q7, [sp, #(6*16)]");
@@ -23,7 +12,6 @@ __attribute__((naked)) void closure_bridge_template() {
 
   // save {x1-x30}
   xASM("sub sp, sp, #(30*8)");
-  // stp fp, lr, [sp, #(28*8)]");
   xASM("stp x29, x30, [sp, #(28*8)]");
   xASM("stp x27, x28, [sp, #(26*8)]");
   xASM("stp x25, x26, [sp, #(24*8)]");
@@ -46,7 +34,6 @@ __attribute__((naked)) void closure_bridge_template() {
   xASM("str x0, [sp, #8]");
 #else
   // save {x0, sp}
-  // save x0 and reserve sp, but this is trick
   xASM("sub sp, sp, #(2*8)");
   xASM("str x0, [sp, #8]");
   // save origin sp
@@ -54,16 +41,13 @@ __attribute__((naked)) void closure_bridge_template() {
   xASM("str x1, [sp, #0]");
 #endif
 
-  // ======= Jump to UnifiedInterface Bridge Handle =======
-
   // prepare args
   // @x0: data_address
   // @x1: DobbyRegisterContext stack address
   xASM("mov x0, sp");
   xASM("mov x1, x14");
-  xASM("bl " xcdecl("common_closure_bridge_handler"));
+  xASM("bl common_closure_bridge_handler");
 
-  // ======= DobbyRegisterContext Restore =======
   // restore x0
   xASM("ldr x0, [sp, #8]");
   xASM("add sp, sp, #(2*8)");
@@ -83,7 +67,6 @@ __attribute__((naked)) void closure_bridge_template() {
   xASM("ldp x23, x24, [sp], #16");
   xASM("ldp x25, x26, [sp], #16");
   xASM("ldp x27, x28, [sp], #16");
-  // ldp fp, lr, [sp], #16");
   xASM("ldp x29, x30, [sp], #16");
 
   // restore {q0-q7}
@@ -91,11 +74,6 @@ __attribute__((naked)) void closure_bridge_template() {
   xASM("ldp q2, q3, [sp], #32");
   xASM("ldp q4, q5, [sp], #32");
   xASM("ldp q6, q7, [sp], #32");
-
-  // DO NOT USE epilog
-  // x29 == fp, x30 == lr
-  // xASM("mov sp, x29");
-  // xASM("ldp x29, x30, [sp], #16");
 
   xASM("br x15");
 };

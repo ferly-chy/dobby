@@ -9,10 +9,8 @@
 // create closure trampoline jump to prologue_routing_dispatch with the `entry_` data
 void InstructionInstrumentRouting::BuildRouting() {
   void *handler = (void *)instrument_routing_dispatch;
-#if defined(__APPLE__) && defined(__arm64__)
-  handler = pac_strip(handler);
-#endif
   auto closure_trampoline = ClosureTrampoline::CreateClosureTrampoline(entry_, handler);
+
   this->SetTrampolineTarget((addr_t)closure_trampoline->address);
   DEBUG_LOG("[closure trampoline] closure trampoline: {:p}, data: {:p}", (void *)closure_trampoline->address, (void *)entry_);
 

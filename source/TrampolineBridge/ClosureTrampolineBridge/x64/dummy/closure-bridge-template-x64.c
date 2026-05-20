@@ -1,11 +1,5 @@
 #if defined(ENABLE_CLOSURE_BRIDGE_TEMPLATE)
 
-#if defined(__WIN32__) || defined(__APPLE__)
-#define xcdecl(s) "_" s
-#else
-#define xcdecl(s) s
-#endif
-
 #define xASM(x) __asm(x)
 
 __attribute__((naked)) void closure_bridge_template() {
@@ -31,16 +25,12 @@ __attribute__((naked)) void closure_bridge_template() {
   xASM("mov [rsp+16*14], r14");
   xASM("mov [rsp+16*15], r15");
 
-  // ======= Jump to UnifiedInterface Bridge Handle =======
-
   // prepare args
   // @rdi: data_address
   // @rsi: DobbyRegisterContext stack address
   xASM("mov rdi, rsp");
   xASM("mov rsi, [rsp-16*8]");
-  xASM("call " xcdecl("common_closure_bridge_handler"));
-
-  // ======= DobbyRegisterContext Restore =======
+  xASM("call common_closure_bridge_handler");
 
   // general register
   xASM("pop r15");
@@ -63,7 +53,6 @@ __attribute__((naked)) void closure_bridge_template() {
   // flags register
   xASM("popfq");
 
-  // trick: use the 'carry_data' placeholder, as the return address
   xASM("ret");
 };
 

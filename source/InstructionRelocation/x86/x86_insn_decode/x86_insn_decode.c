@@ -3,8 +3,6 @@
 
 #include "x86_insn_decode.h"
 
-#include "logging/logging.h"
-
 #define REX_W(byte) ((byte & 0b00001000) >> 3)
 #define REX_R(byte) ((byte & 0b00000100) >> 2)
 #define REX_X(byte) ((byte & 0b00000010) >> 1)
@@ -285,7 +283,7 @@ void x86_insn_decode_modrm_sib(x86_insn_reader_t *rd, x86_insn_decode_t *insn, x
   else if (conf->mode == 32)
     effective_address_bits = (insn->prefix & INSN_PREFIX_ADDRESS_SIZE) ? 16 : 32;
   else {
-    ERROR_LOG("16-bit address mode not supported");
+    X86_INSN_ERROR_LOG("16-bit address mode not supported");
   }
 
   if (effective_address_bits == 32 || effective_address_bits == 64) {
@@ -447,7 +445,7 @@ static void x86_insn_decode_opcode(x86_insn_reader_t *rd, x86_insn_decode_t *ins
 
   // check sse group
   if (X86_INSN_FLAG_GET_GROUP(insn_spec.flags) > X86_INSN_SSE_GROUP_START) {
-    UNIMPLEMENTED();
+    X86_INSN_UNIMPLEMENTED();
   }
 
   if (X86_INSN_FLAG_GET_GROUP(insn_spec.flags) > X86_INSN_GROUP_START &&
@@ -554,7 +552,7 @@ void x86_insn_decode(x86_insn_decode_t *insn, uint8_t *buffer, x86_options_t *co
   }
 
 #if 1
-  DEBUG_LOG("[x86 insn] %s", insn->insn_spec.name);
+  X86_INSN_DEBUG_LOG("[x86 insn] %s", insn->insn_spec.name);
 #endif
 
   // set insn length

@@ -4,6 +4,8 @@
 
 #include "InstructionRelocation/arm64/InstructionRelocationARM64.h"
 
+#include <unordered_map>
+
 #include "dobby/dobby_internal.h"
 
 #include "core/arch/arm64/registers-arm64.h"
@@ -37,9 +39,9 @@ typedef struct {
   CodeMemBlock *origin;
   CodeMemBlock *relocated;
 
-  tinystl::unordered_map<off_t, off_t> relocated_offset_map;
+  std::unordered_map<off_t, off_t> relocated_offset_map;
 
-  tinystl::unordered_map<addr_t, AssemblerPseudoLabel *> label_map;
+  std::unordered_map<addr_t, AssemblerPseudoLabel *> label_map;
 
 } relo_ctx_t;
 

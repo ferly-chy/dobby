@@ -1,13 +1,4 @@
-// .section	__TEXT,__text,regular,pure_instructions
-// .ios_version_min 11, 0
-
 #if defined(ENABLE_CLOSURE_BRIDGE_TEMPLATE)
-
-#if defined(__WIN32__) || defined(__APPLE__)
-#define cdecl(s) "_" s
-#else
-#define cdecl(s) s
-#endif
 
 #define xASM(x) __asm(x)
 
@@ -34,7 +25,7 @@ __attribute__((naked)) void closure_bridge_template() {
 
   xASM("mov r0, sp");
   xASM("mov r1, r12");
-  xASM("bl " cdecl("common_closure_bridge_handler"));
+  xASM("bl common_closure_bridge_handler");
 
   // dummy align
   xASM("add sp, sp, #8");

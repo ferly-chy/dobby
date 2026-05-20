@@ -12,8 +12,7 @@ void instrument_forward_handler(InterceptEntry *entry, DobbyRegisterContext *ctx
     (*handler)((void *)entry->patched_addr, ctx);
   }
 
-  // set prologue bridge next hop address as relocated instructions
-  set_routing_bridge_next_hop(ctx, (void *)entry->relocated_addr);
+  set_routing_bridge_next_hop(ctx, entry->relocated_addr);
 }
 
 void instrument_routing_dispatch(InterceptEntry *entry, DobbyRegisterContext *ctx) {

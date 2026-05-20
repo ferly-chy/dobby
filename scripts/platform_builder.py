@@ -20,15 +20,10 @@ class LibraryType(StrEnum):
     STATIC = "static"
 
 class Platform(StrEnum):
-    MACOS = "macos"
-    IPHONEOS = "iphoneos"
     LINUX = "linux"
     ANDROID = "android"
-    WINDOWS = "windows"
 
 PLATFORMS_ARCHS: Final[dict[Platform, list[str]]] = {
-    Platform.MACOS: ["x86_64", "arm64", "arm64e"],
-    Platform.IPHONEOS: ["arm64", "arm64e"],
     Platform.LINUX: ["x86", "x86_64", "arm", "arm64"],
     Platform.ANDROID: ["x86", "x86_64", "armeabi-v7a", "arm64-v8a"],
 }
@@ -126,15 +121,6 @@ class PlatformBuilder:
             else:
                 logger.warning(f"Artifact not found: {src}")
 
-class WindowsBuilder(PlatformBuilder):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.shared_output_name = "libdobby.dll"
-        self.static_output_name = "libdobby.lib"
-
-    def setup_platform_args(self):
-        self.cmake_args.append(f"-DCMAKE_SYSTEM_PROCESSOR={self.arch}")
-
 class LinuxBuilder(PlatformBuilder):
     def setup_platform_args(self):
         self.cmake_args += [
@@ -154,61 +140,20 @@ class AndroidBuilder(PlatformBuilder):
              logger.error(f"Android toolchain not found: {toolchain}")
              sys.exit(1)
              
-        # Use CMAKE_ANDROID_NDK for modern CMake built-in support
-        # AND CMAKE_TOOLCHAIN_FILE for the NDK's custom logic
         self.cmake_args += [
             f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
             f"-DANDROID_ABI={self.arch}",
             f"-DANDROID_NDK={self.ndk_dir}",
             f"-DANDROID_PLATFORM=android-{api_level}",
             "-DANDROID_STL=c++_static",
-            # Sometimes CMake's built-in support interferes, try to satisfy it
             f"-DCMAKE_ANDROID_NDK={self.ndk_dir}",
             f"-DCMAKE_ANDROID_ARCH_ABI={self.arch}",
             f"-DCMAKE_SYSTEM_NAME=Android",
             f"-DCMAKE_SYSTEM_VERSION={api_level}",
         ]
 
-class DarwinBuilder(PlatformBuilder):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.shared_output_name = "libdobby.dylib"
-        self.static_output_name = "libdobby.a"
-
-    def setup_platform_args(self):
-        self.cmake_args += [
-            f"-DCMAKE_OSX_ARCHITECTURES={self.arch}",
-            f"-DCMAKE_SYSTEM_PROCESSOR={self.arch}",
-        ]
-        match self.platform:
-            case Platform.MACOS:
-                self.cmake_args.append("-DCMAKE_SYSTEM_NAME=Darwin")
-            case Platform.IPHONEOS:
-                self.cmake_args += [
-                    "-DCMAKE_SYSTEM_NAME=iOS",
-                    "-DCMAKE_OSX_DEPLOYMENT_TARGET=9.3",
-                ]
-
-    @staticmethod
-    def create_universal_binary(project_dir: Path, platform: Platform, names: Sequence[str]):
-        archs = PLATFORMS_ARCHS.get(platform, [])
-        fat_dir = project_dir / "build" / platform / "universal"
-        fat_dir.mkdir(parents=True, exist_ok=True)
-
-        for name in names:
-            files = [project_dir / "build" / platform / arch / name for arch in archs]
-            files = [str(f) for f in files if f.exists()]
-            
-            if not files:
-                continue
-
-            output = fat_dir / name
-            cmd = ["lipo", "-create"] + files + ["-output", str(output)]
-            logger.info(f"Creating universal binary: {' '.join(cmd)}")
-            subprocess.run(cmd, check=True)
-
 def main():
-    parser = argparse.ArgumentParser(description="Dobby Platform Builder")
+    parser = argparse.ArgumentParser(description="Dobby Platform Builder (Android Exclusive Fork)")
     parser.add_argument("--platform", type=Platform, choices=list(Platform), required=True)
     parser.add_argument("--arch", type=str, required=True, help="Architecture (comma-separated or 'all')")
     parser.add_argument("--type", type=LibraryType, choices=list(LibraryType), default=LibraryType.STATIC)
@@ -239,7 +184,7 @@ def main():
 
     valid_archs = PLATFORMS_ARCHS.get(args.platform, [])
     for a in selected_archs:
-        if a not in valid_archs and args.platform != Platform.WINDOWS:
+        if a not in valid_archs:
              logger.error(f"Invalid architecture '{a}' for platform '{args.platform}' (Available: {valid_archs})")
              sys.exit(1)
 
@@ -250,24 +195,15 @@ def main():
     builder_instance: PlatformBuilder | None = None
     for arch in selected_archs:
         match args.platform:
-            case Platform.MACOS | Platform.IPHONEOS:
-                builder_instance = DarwinBuilder(project_root, args.type, args.platform, arch, args.cmake, args.llvm)
             case Platform.ANDROID:
                 builder_instance = AndroidBuilder(args.ndk, project_root, args.type, args.platform, arch, args.cmake, args.llvm)
             case Platform.LINUX:
                 builder_instance = LinuxBuilder(project_root, args.type, args.platform, arch, args.cmake, args.llvm)
-            case Platform.WINDOWS:
-                builder_instance = WindowsBuilder(project_root, args.type, args.platform, arch, args.cmake, args.llvm)
 
         if builder_instance:
             builder_instance.setup_platform_args()
             logger.info(f"Starting build for {args.platform} ({arch})")
             builder_instance.build()
-
-    if args.platform in [Platform.MACOS, Platform.IPHONEOS] and args.arch == "all" and builder_instance:
-        DarwinBuilder.create_universal_binary(
-            project_root, args.platform, [builder_instance.shared_output_name, builder_instance.static_output_name]
-        )
 
 if __name__ == "__main__":
     main()

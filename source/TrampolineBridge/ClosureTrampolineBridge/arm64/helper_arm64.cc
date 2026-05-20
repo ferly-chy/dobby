@@ -7,11 +7,8 @@
 
 using namespace zz::arm64;
 
-void set_routing_bridge_next_hop(DobbyRegisterContext *ctx, void *address) {
-  *reinterpret_cast<void **>(&ctx->general.x[TMP_REG_0.code()]) = address;
-}
-
-void get_routing_bridge_next_hop(DobbyRegisterContext *ctx, void *address) {
+void set_routing_bridge_next_hop(DobbyRegisterContext *ctx, addr_t address) {
+  ctx->general.x[TMP_REG_0.code()] = address;
 }
 
 #endif

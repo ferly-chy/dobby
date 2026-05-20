@@ -2,51 +2,28 @@
 #include <limits.h>
 #include <pthread.h>
 #include <assert.h>
-
-#if defined(__DragonFly__) || defined(__FreeBSD__) || defined(__OpenBSD__)
-#include <pthread_np.h> // for pthread_set_name_np
-#endif
-
-#include <sched.h> // for sched_yield
+#include <sched.h>
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
-
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
 
-#if defined(__APPLE__) || defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
-#include <sys/sysctl.h> // NOLINT, for sysctl
-#endif
-
 #include "logging/logging.h"
-#include "logging/check_logging.h"
+#include "base/check_logging.h"
 #include "PlatformUnifiedInterface/platform.h"
 
-#if defined(__APPLE__)
-#include <dlfcn.h>
-#include <mach/mach.h>
-#include <mach/vm_statistics.h>
-#endif
-
-#if defined(ANDROID) && !defined(ANDROID_LOG_STDOUT)
+#if defined(__ANDROID__) && !defined(ANDROID_LOG_STDOUT)
 #define ANDROID_LOG_TAG "Dobby"
-
 #include <android/log.h>
-
 #endif
 
 #include <string.h>
 
-#if defined(__APPLE__)
-const int kMmapFd = VM_MAKE_TAG(255);
-#else
 const int kMmapFd = -1;
-#endif
-
 const int kMmapFdOffset = 0;
 
 using namespace base;
@@ -56,21 +33,11 @@ typedef struct thread_handle_t {
 } thread_handle_t;
 
 void ThreadInterface::SetName(const char *name) {
-#if defined(__DragonFly__) || defined(__FreeBSD__) || defined(__OpenBSD__)
-  pthread_set_name_np(pthread_self(), name);
-#elif defined(__APPLE__)
-  pthread_setname_np(name);
-#endif
+  pthread_setname_np(pthread_self(), name);
 }
 
 int ThreadInterface::CurrentId() {
-#if defined(__APPLE__)
-  mach_port_t port = mach_thread_self();
-  mach_port_deallocate(mach_task_self(), port);
-  return port;
-#elif defined(_POSIX_VERSION)
   return syscall(__NR_gettid);
-#endif
 }
 
 static void *thread_handler_wrapper(void *ctx) {
@@ -92,7 +59,7 @@ bool ThreadInterface::Create(ThreadInterface::Delegate *delegate, ThreadHandle *
 }
 
 OSThread::OSThread(const char *name) {
-  strncpy(name_, name, sizeof(name_) -1);
+  strncpy(name_, name, sizeof(name_) - 1);
 }
 
 bool OSThread::Start() {
@@ -175,7 +142,7 @@ void OSPrint::Print(const char *format, ...) {
 }
 
 void OSPrint::VPrint(const char *format, va_list args) {
-#if defined(ANDROID) && !defined(ANDROID_LOG_STDOUT)
+#if defined(__ANDROID__) && !defined(ANDROID_LOG_STDOUT)
   __android_log_vprint(ANDROID_LOG_INFO, ANDROID_LOG_TAG, format, args);
 #else
   vprintf(format, args);

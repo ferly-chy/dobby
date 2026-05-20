@@ -10,29 +10,7 @@ using namespace zz;
 #define MB (1024uLL * KB)
 #define GB (1024uLL * MB)
 
-#if defined(WIN32)
-static const void *memmem(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen) {
-  if (!haystack || !needle) {
-    return haystack;
-  } else {
-    const char *h = (const char *)haystack;
-    const char *n = (const char *)needle;
-    size_t l = needlelen;
-    const char *r = h;
-    while (l && (l <= haystacklen)) {
-      if (*n++ != *h++) {
-        r = h;
-        n = (const char *)needle;
-        l = needlelen;
-      } else {
-        --l;
-      }
-      --haystacklen;
-    }
-    return l ? nullptr : r;
-  }
-}
-#endif
+#include <string.h>
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))

@@ -3,9 +3,6 @@
 // offset of struct member
 #define OFFSETOF(TYPE, ELEMENT) ((size_t) & (((TYPE *)0)->ELEMENT))
 
-// assert
-#define ASSERT(X)
-
 // left/right shift
 #define LeftShift(a, b, c) ((a & ((1 << b) - 1)) << c)
 #define RightShift(a, b, c) ((a >> c) & ((1 << b) - 1))
@@ -28,7 +25,6 @@
 #define set_bits(obj, st, fn, bits) obj = (((~(submask(fn - st) << st)) & obj) | (bits << st))
 
 // definition to expand macro then apply to pragma message
-// #pragma message(VAR_NAME_VALUE(HOST_OS_IOS))
 #define VALUE_TO_STRING(x) #x
 #define VALUE(x) VALUE_TO_STRING(x)
 #define VAR_NAME_VALUE(var) #var "=" VALUE(var)
@@ -44,19 +40,8 @@
 #define PRIxPTR __PRI_PTR_prefix "x" /* uintptr_t */
 
 // deprecated declared
-#if defined(__GNUC__) || defined(__clang__)
 #define DEPRECATED __attribute__((deprecated))
-#elif defined(_MSC_VER)
-#define DEPRECATED __declspec(deprecated)
-#else
-#pragma message("WARNING: You need to implement DEPRECATED for this compiler")
-#define DEPRECATED
-#endif
 
 // export method
-#if defined(_WIN32)
-#define PUBLIC
-#else
 #define PUBLIC __attribute__((visibility("default")))
 #define INTERNAL __attribute__((visibility("internal")))
-#endif

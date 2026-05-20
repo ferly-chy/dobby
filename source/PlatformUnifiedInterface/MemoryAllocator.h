@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "dobby/common.h"
 
 struct MemRange {
@@ -37,7 +39,7 @@ struct MemoryArena : MemRange {
   addr_t addr;
   addr_t cursor_addr;
 
-  tinystl::vector<MemBlock *> memory_blocks;
+  std::vector<MemBlock *> memory_blocks;
 
   MemoryArena(addr_t addr, size_t size) : MemRange(addr, size), addr(addr), cursor_addr(addr) {
   }
@@ -79,8 +81,8 @@ class MemoryAllocator {
   friend class NearMemoryAllocator;
 
 private:
-  tinystl::vector<CodeMemoryArena *> code_arenas;
-  tinystl::vector<DataMemoryArena *> data_arenas;
+  std::vector<CodeMemoryArena *> code_arenas;
+  std::vector<DataMemoryArena *> data_arenas;
 
 private:
   static MemoryAllocator *shared_allocator;

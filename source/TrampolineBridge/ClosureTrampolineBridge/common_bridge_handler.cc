@@ -1,22 +1,22 @@
-#include "logging/logging.h"
-
 #include "TrampolineBridge/ClosureTrampolineBridge/common_bridge_handler.h"
 
-PUBLIC void common_closure_bridge_handler(DobbyRegisterContext *ctx, ClosureTrampolineEntry *entry) {
-  DEBUG_LOG("common bridge handler: carry data: {:p}, carry handler: {:p}", (void *)entry->carry_data,
-            (void *)entry->carry_handler);
+#include "dobby/dobby_internal.h"
 
-  typedef void (*routing_handler_t)(InterceptEntry *, DobbyRegisterContext *);
-  auto routing_handler = (routing_handler_t)entry->carry_handler;
+#include "InterceptEntry.h"
 
-#if defined(__APPLE__) && __arm64e__
-#if __has_feature(ptrauth_calls)
-  uint64_t discriminator = 0;
-  // discriminator = __builtin_ptrauth_type_discriminator(__typeof(routing_handler));
-  routing_handler = (__typeof(routing_handler))__builtin_ptrauth_sign_unauthenticated((void *)routing_handler,
-                                                                                      ptrauth_key_asia, discriminator);
-#endif
-#endif
+#include "TrampolineBridge/ClosureTrampolineBridge/ClosureTrampoline.h"
 
-  routing_handler((InterceptEntry *)entry->carry_data, ctx);
+void common_closure_bridge_handler(DobbyRegisterContext *ctx, ClosureTrampolineEntry *closure_trampoline_entry) {
+  InterceptEntry *entry = (InterceptEntry *)closure_trampoline_entry->carry_data;
+
+  if (entry->type == kFunctionInlineHook) {
+    // nothing to do
+  } else if (entry->type == kInstructionInstrument) {
+    dobby_instrument_callback_t pre_handler = (dobby_instrument_callback_t)closure_trampoline_entry->carry_handler;
+    if (pre_handler) {
+      pre_handler((void *)entry->patched_addr, ctx);
+    }
+  }
+
+  set_routing_bridge_next_hop(ctx, entry->relocated_addr);
 }

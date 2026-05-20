@@ -10,9 +10,7 @@ endif ()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-rtti -fno-exceptions -fno-stack-protector")
 
-if (SYSTEM.Darwin)
-  # set(compiler_flags "${compiler_flags} -nostdinc++")
-elseif (SYSTEM.Android)
+if (SYSTEM.Android)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fomit-frame-pointer")
   if (NOT DOBBY_DEBUG)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections")
@@ -31,7 +29,6 @@ elseif (SYSTEM.Linux)
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --target=x86_64-unknown-linux-gnu")
     endif ()
   endif ()
-elseif (SYSTEM.Windows)
 endif ()
 
 if (NOT DOBBY_DEBUG)

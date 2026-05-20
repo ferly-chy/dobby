@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "MemoryAllocator/CodeBuffer/CodeBufferBase.h"
 
 class Label {
@@ -51,7 +53,7 @@ public:
   }
 
 protected:
-  tinystl::vector<ref_label_insn_t> ref_label_insns_;
+  std::vector<ref_label_insn_t> ref_label_insns_;
 };
 
 struct RelocLabel : public AssemblerPseudoLabel {
