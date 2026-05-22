@@ -64,8 +64,8 @@ public:
   ThumbRelocLabelEntry(bool is_pc_register) : ThumbPseudoLabel(0), RelocLabel(), is_pc_register_(is_pc_register) {
   }
 
-  template <typename T> static ThumbRelocLabelEntry *withData(T value, bool is_pc_register) {
-    auto label = new ThumbRelocLabelEntry(is_pc_register);
+  template <typename T> static std::unique_ptr<ThumbRelocLabelEntry> withData(T value, bool is_pc_register) {
+    auto label = std::make_unique<ThumbRelocLabelEntry>(is_pc_register);
     label->setData(value);
     return label;
   }
@@ -86,7 +86,7 @@ public:
     this->SetExecuteState(ThumbExecuteState);
   }
 
-  ThumbAssembler(void *address, CodeBuffer *buffer) : Assembler(address, buffer) {
+  ThumbAssembler(void *address, std::shared_ptr<CodeBuffer> buffer) : Assembler(address, std::move(buffer)) {
     this->SetExecuteState(ThumbExecuteState);
   }
 
@@ -217,11 +217,10 @@ public:
   ThumbTurboAssembler(void *address) : ThumbAssembler(address) {
   }
 
-  ThumbTurboAssembler(void *address, CodeBuffer *buffer) : ThumbAssembler(address, buffer) {
+  ThumbTurboAssembler(void *address, std::shared_ptr<CodeBuffer> buffer) : ThumbAssembler(address, std::move(buffer)) {
   }
 
-  ~ThumbTurboAssembler() {
-  }
+  ~ThumbTurboAssembler() = default;
 
   void T1_Ldr(Register rt, ThumbPseudoLabel *label) {
     UNREACHABLE();
@@ -271,18 +270,18 @@ public:
   }
 
   void RelocBind() {
-    for (auto *data_label : data_labels_) {
-      PseudoBind(data_label);
-      reinterpret_cast<CodeBufferBase *>(buffer_)->EmitBuffer(data_label->data_, data_label->data_size_);
+    for (auto &data_label : data_labels_) {
+      PseudoBind(data_label.get());
+      buffer_->EmitBuffer(data_label->data_, data_label->data_size_);
     }
   }
 
-  void AppendRelocLabel(ThumbRelocLabelEntry *label) {
-    data_labels_.push_back(label);
+  void AppendRelocLabel(std::unique_ptr<ThumbRelocLabelEntry> label) {
+    data_labels_.push_back(std::move(label));
   }
 
   void RelocLabelFixup(std::unordered_map<off_t, off_t> *relocated_offset_map) {
-    for (auto *data_label : data_labels_) {
+    for (auto &data_label : data_labels_) {
       auto val = data_label->data<int32_t>();
       auto iter = relocated_offset_map->find(val);
       if (iter != relocated_offset_map->end()) {
@@ -291,8 +290,8 @@ public:
     }
   }
 
-private:
-  std::vector<ThumbRelocLabelEntry *> data_labels_;
+  protected:
+  std::vector<std::unique_ptr<ThumbRelocLabelEntry>> data_labels_;
 };
 
 #if 0

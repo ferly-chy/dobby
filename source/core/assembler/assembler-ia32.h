@@ -222,19 +222,12 @@ private:
     SetDisp32(disp);
   }
 };
-
-// ---
-
 class Assembler : public AssemblerBase {
 public:
   Assembler(void *address) : AssemblerBase(address) {
-    buffer_ = new CodeBuffer();
+    buffer_ = std::make_shared<CodeBuffer>();
   }
-  ~Assembler() {
-    if (buffer_)
-      buffer_->CodeBuffer::~CodeBuffer();
-    buffer_ = NULL;
-  }
+  ~Assembler() = default;
 
 public:
   void Emit1(byte_t val) {
@@ -252,12 +245,10 @@ public:
       buffer_->Emit8((uint8_t)imm.value());
     } else if (imm_size == 32) {
       buffer_->Emit32((uint32_t)imm.value());
-    } else {
-      UNREACHABLE();
     }
   }
 
-  // ---
+// ---
 
   // ATTENTION:
   // ModR/M == 8 registers and 24 addressing mode
@@ -441,7 +432,7 @@ public:
     {
       auto label = RelocLabel::withData(function.address());
       label->link_to(kDisp32_off_7, ip_offset());
-      AppendRelocLabel(label);
+      AppendRelocLabel(std::move(label));
     }
     nop();
   }

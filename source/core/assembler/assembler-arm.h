@@ -186,19 +186,19 @@ private:
 public:
   Assembler(void *address) : AssemblerBase(address) {
     execute_state_ = ARMExecuteState;
-    buffer_ = new CodeBuffer();
+    buffer_ = std::make_shared<CodeBuffer>();
   }
 
-  // shared_ptr is better choice
-  // but we can't use it at kernelspace
-  Assembler(void *address, CodeBuffer *buffer) : AssemblerBase(address) {
+  Assembler(void *address, std::shared_ptr<CodeBuffer> buffer) : AssemblerBase(address) {
     execute_state_ = ARMExecuteState;
-    buffer_ = buffer;
+    buffer_ = std::move(buffer);
   }
 
   void ClearCodeBuffer() {
-    buffer_ = NULL;
+    buffer_.reset();
   }
+
+  ~Assembler() = default;
 
 public:
   void SetExecuteState(ExecuteState state) {
@@ -328,7 +328,7 @@ public:
   ~TurboAssembler() {
   }
 
-  TurboAssembler(void *address, CodeBuffer *buffer) : Assembler(address, buffer) {
+  TurboAssembler(void *address, std::shared_ptr<CodeBuffer> buffer) : Assembler(address, buffer) {
   }
 
   void Ldr(Register rt, AssemblerPseudoLabel *label) {
@@ -354,7 +354,7 @@ public:
   }
 
   void RelocLabelFixup(std::unordered_map<off_t, off_t> *relocated_offset_map) {
-    for (auto *data_label : data_labels_) {
+    for (auto &data_label : data_labels_) {
       auto val = data_label->data<int32_t>();
       auto iter = relocated_offset_map->find(val);
       if (iter != relocated_offset_map->end()) {

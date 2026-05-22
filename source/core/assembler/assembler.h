@@ -1,12 +1,21 @@
 #pragma once
 
 #include <vector>
+#include <memory>
 
 #include "MemoryAllocator/CodeBuffer/CodeBufferBase.h"
 
-#include "AssemblerPseudoLabel.h"
+#if defined(TARGET_ARCH_ARM)
+#include "MemoryAllocator/CodeBuffer/code_buffer_arm.h"
+#elif defined(TARGET_ARCH_ARM64)
+#include "MemoryAllocator/CodeBuffer/code_buffer_arm64.h"
+#elif defined(TARGET_ARCH_IA32)
+#include "MemoryAllocator/CodeBuffer/code_buffer_x86.h"
+#elif defined(TARGET_ARCH_X64)
+#include "MemoryAllocator/CodeBuffer/code_buffer_x64.h"
+#endif
 
-class CodeBuffer;
+#include "AssemblerPseudoLabel.h"
 
 namespace zz {
 
@@ -37,10 +46,10 @@ public:
 
   void RelocBind();
 
-  void AppendRelocLabel(RelocLabel *label);
+  void AppendRelocLabel(std::unique_ptr<RelocLabel> label);
 
 protected:
-  std::vector<RelocLabel *> data_labels_;
+  std::vector<std::unique_ptr<RelocLabel>> data_labels_;
 
 public:
   virtual void *GetRealizedAddress();
@@ -52,7 +61,7 @@ public:
   static void FlushICache(addr_t start, addr_t end);
 
 protected:
-  CodeBuffer *buffer_;
+  std::shared_ptr<CodeBuffer> buffer_;
 
   void *realized_addr_;
 };

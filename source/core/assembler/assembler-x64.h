@@ -271,13 +271,14 @@ private:
 class Assembler : public AssemblerBase {
 public:
   Assembler(void *address) : AssemblerBase(address) {
-    buffer_ = new CodeBuffer();
+    buffer_ = std::make_shared<CodeBuffer>();
   }
-  ~Assembler() {
-    if (buffer_)
-      buffer_->CodeBuffer::~CodeBuffer();
-    buffer_ = NULL;
+
+  Assembler(void *address, std::shared_ptr<CodeBuffer> buffer) : AssemblerBase(address) {
+    buffer_ = std::move(buffer);
   }
+
+  ~Assembler() = default;
 
 public:
   void Emit1(byte_t val) {
@@ -581,7 +582,7 @@ public:
     {
       auto label = RelocLabel::withData((uint64_t)function.address());
       label->link_to(kDisp32_off_9, ip_offset());
-      this->AppendRelocLabel(label);
+      this->AppendRelocLabel(std::move(label));
     }
     nop();
   }
