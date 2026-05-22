@@ -1,7 +1,7 @@
 #include "MemoryAllocator/CodeBuffer/CodeBufferBase.h"
 
-CodeBufferBase *CodeBufferBase::Copy() {
-  CodeBufferBase *result = new CodeBufferBase();
+std::unique_ptr<CodeBufferBase> CodeBufferBase::Copy() {
+  auto result = std::make_unique<CodeBufferBase>();
   auto buffer = GetBuffer();
   result->EmitBuffer(buffer.data(), buffer.size());
   return result;
@@ -23,8 +23,8 @@ void CodeBufferBase::Emit64(uint64_t data) {
   Emit(data);
 }
 
-void CodeBufferBase::EmitBuffer(const uint8_t *buffer, size_t buffer_size) {
-  buffer_.insert(buffer_.end(), buffer, buffer + buffer_size);
+void CodeBufferBase::EmitBuffer(std::span<const uint8_t> buffer) {
+  buffer_.insert(buffer_.end(), buffer.begin(), buffer.end());
 }
 
 std::span<uint8_t> CodeBufferBase::GetBuffer() {

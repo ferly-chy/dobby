@@ -55,6 +55,22 @@ public:
     return (intptr_t)reg_value & 0x20;
   }
 
+  void setVerbose(bool verbose) {
+    verbose_ = verbose;
+  }
+
+  bool isVerbose() const {
+    return verbose_;
+  }
+
+  void setTraceInstructions(bool trace_instructions) {
+    trace_instructions_ = trace_instructions;
+  }
+
+  bool shouldTraceInstructions() const {
+    return trace_instructions_;
+  }
+
   void reset();
 
 public:
@@ -65,6 +81,8 @@ private:
   uc_err err_;
   uc_engine *uc_;
   uintptr_t unmapped_addr_;
+  bool verbose_ = true;
+  bool trace_instructions_ = true;
 };
 
 void set_global_arch(std::string arch);

@@ -57,9 +57,7 @@ static AssemblyCode *GenerateFastForwardTrampoline(addr_t src, addr_t dst) {
   return code;
 }
 
-CodeBufferBase *GenerateNearTrampolineBuffer(InterceptRouting *routing, addr_t src, addr_t dst) {
-  CodeBufferBase *result = nullptr;
-
+std::unique_ptr<CodeBufferBase> GenerateNearTrampolineBuffer(InterceptRouting *routing, addr_t src, addr_t dst) {
   TurboAssembler turbo_assembler_((void *)src);
 #define _ turbo_assembler_.
 
@@ -74,8 +72,7 @@ CodeBufferBase *GenerateNearTrampolineBuffer(InterceptRouting *routing, addr_t s
   }
 
   // free the original trampoline
-  result = turbo_assembler_.GetCodeBuffer()->Copy();
-  return result;
+  return turbo_assembler_.GetCodeBuffer()->Copy();
 }
 
 #endif

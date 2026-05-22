@@ -27,7 +27,7 @@ static addr_t allocate_indirect_stub(addr_t jmp_insn_addr) {
   return stub_addr;
 }
 
-CodeBufferBase *GenerateNormalTrampolineBuffer(addr_t from, addr_t to) {
+std::unique_ptr<CodeBufferBase> GenerateNormalTrampolineBuffer(addr_t from, addr_t to) {
   TurboAssembler turbo_assembler_((void *)from);
 #define _ turbo_assembler_.
 
@@ -42,13 +42,12 @@ CodeBufferBase *GenerateNormalTrampolineBuffer(addr_t from, addr_t to) {
   CodeGen codegen(&turbo_assembler_);
   codegen.JmpNearIndirect((addr_t)forward_stub);
 
-  auto buffer = turbo_assembler_.GetCodeBuffer()->Copy();
-  return buffer;
+  return turbo_assembler_.GetCodeBuffer()->Copy();
 }
 
-CodeBufferBase *GenerateNearTrampolineBuffer(InterceptRouting *routing, addr_t src, addr_t dst) {
+std::unique_ptr<CodeBufferBase> GenerateNearTrampolineBuffer(InterceptRouting *routing, addr_t src, addr_t dst) {
   DEBUG_LOG("x64 near branch trampoline enable default");
-  return nullptr;
+  return GenerateNormalTrampolineBuffer(src, dst);
 }
 
 #endif

@@ -3,14 +3,16 @@
 #include "InterceptRouting/InterceptRouting.h"
 #include "InterceptRouting/RoutingPlugin/RoutingPlugin.h"
 
+#include <fmt/format.h>
+
 using namespace zz;
 
 void log_hex_format(uint8_t *buffer, uint32_t buffer_size) {
-  char output[1024] = {0};
-  for (int i = 0; i < buffer_size && i < sizeof(output); i++) {
-    snprintf(output + strlen(output), 3, "%02x", *((uint8_t *)buffer + i));
+  std::string output;
+  for (uint32_t i = 0; i < buffer_size; i++) {
+    output += fmt::format("{:02x}", buffer[i]);
   }
-  DEBUG_LOG("{}", (const char *)output);
+  DEBUG_LOG("{}", output);
 };
 
 void InterceptRouting::Prepare() {
@@ -18,8 +20,8 @@ void InterceptRouting::Prepare() {
 
 std::expected<void, int> InterceptRouting::GenerateRelocatedCode() {
   uint32_t tramp_size = GetTrampolineBuffer()->GetBufferSize();
-  origin_ = new CodeMemBlock(entry_->patched_addr, tramp_size);
-  relocated_ = new CodeMemBlock();
+  origin_ = std::make_unique<CodeMemBlock>(entry_->patched_addr, tramp_size);
+  relocated_ = std::make_unique<CodeMemBlock>();
 
   auto buffer = (void *)entry_->patched_addr;
 #if defined(TARGET_ARCH_ARM)
@@ -27,7 +29,7 @@ std::expected<void, int> InterceptRouting::GenerateRelocatedCode() {
     buffer = (void *)((addr_t)buffer + 1);
   }
 #endif
-  GenRelocateCodeAndBranch(buffer, origin_, relocated_);
+  GenRelocateCodeAndBranch(buffer, origin_.get(), relocated_.get());
   if (relocated_->size == 0) {
     ERROR_LOG("[insn relocate] failed");
     return std::unexpected(-1);
@@ -61,7 +63,7 @@ std::expected<void, int> InterceptRouting::GenerateTrampolineBuffer(addr_t src, 
 
   if (GetTrampolineBuffer() == nullptr) {
     auto tramp_buffer = GenerateNormalTrampolineBuffer(src, dst);
-    SetTrampolineBuffer(tramp_buffer);
+    SetTrampolineBuffer(std::move(tramp_buffer));
   }
   return {};
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <memory>
 #include "dobby/common.h"
 
 typedef enum { kFunctionInlineHook, kInstructionInstrument } InterceptEntryType;
@@ -10,7 +11,7 @@ class InterceptRouting;
 typedef struct InterceptEntry {
   uint32_t id;
   InterceptEntryType type;
-  InterceptRouting *routing;
+  std::unique_ptr<InterceptRouting> routing;
 
   union {
     addr_t addr;

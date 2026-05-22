@@ -3,7 +3,6 @@
 #include "UniconEmulator.h"
 
 int main() {
-  log_set_level(0);
   set_global_arch("x86_64");
 
 

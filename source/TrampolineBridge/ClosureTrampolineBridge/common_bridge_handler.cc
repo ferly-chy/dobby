@@ -7,23 +7,29 @@
 #include "TrampolineBridge/ClosureTrampolineBridge/ClosureTrampoline.h"
 
 void common_closure_bridge_handler(DobbyRegisterContext *ctx, ClosureTrampolineEntry *closure_trampoline_entry) {
-  if (closure_trampoline_entry == nullptr || closure_trampoline_entry->carry_kind != kClosureCarryKindRouteEntry) {
+  if (closure_trampoline_entry == nullptr) {
     return;
   }
 
-  auto *entry = static_cast<InterceptEntry *>(closure_trampoline_entry->carry_data);
-  if (entry == nullptr) {
-    return;
-  }
+  if (closure_trampoline_entry->carry_kind == kClosureCarryKindRouteEntry) {
+    auto *entry = closure_trampoline_entry->metadata.route.entry;
+    if (entry == nullptr) {
+      return;
+    }
 
-  if (closure_trampoline_entry->carry_handler != nullptr) {
-    closure_trampoline_entry->carry_handler(closure_trampoline_entry->carry_data, ctx);
-    return;
-  }
+    if (closure_trampoline_entry->metadata.route.handler != nullptr) {
+      closure_trampoline_entry->metadata.route.handler(entry, ctx);
+      return;
+    }
 
-  if (entry->type == kFunctionInlineHook) {
-    // nothing to do
-  }
+    if (entry->type == kFunctionInlineHook) {
+      // nothing to do
+    }
 
-  set_routing_bridge_next_hop(ctx, entry->relocated_addr);
+    set_routing_bridge_next_hop(ctx, entry->relocated_addr);
+  } else if (closure_trampoline_entry->carry_kind == kClosureCarryKindUserDefined) {
+    if (closure_trampoline_entry->metadata.user.handler != nullptr) {
+      closure_trampoline_entry->metadata.user.handler(closure_trampoline_entry->metadata.user.data, ctx);
+    }
+  }
 }

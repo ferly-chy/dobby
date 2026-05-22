@@ -6,7 +6,7 @@
 #include "TrampolineBridge/ClosureTrampolineBridge/common_bridge_handler.h"
 
 void instrument_forward_handler(InterceptEntry *entry, DobbyRegisterContext *ctx) {
-  auto routing = static_cast<InstructionInstrumentRouting *>(entry->routing);
+  auto routing = static_cast<InstructionInstrumentRouting *>(entry->routing.get());
   if (routing->pre_handler) {
     auto handler = (dobby_instrument_callback_t)routing->pre_handler;
     (*handler)((void *)entry->patched_addr, ctx);
@@ -15,8 +15,7 @@ void instrument_forward_handler(InterceptEntry *entry, DobbyRegisterContext *ctx
   set_routing_bridge_next_hop(ctx, entry->relocated_addr);
 }
 
-void instrument_routing_dispatch(void *carry_data, DobbyRegisterContext *ctx) {
-  auto *entry = static_cast<InterceptEntry *>(carry_data);
+void instrument_routing_dispatch(InterceptEntry *entry, DobbyRegisterContext *ctx) {
   if (entry == nullptr) {
     return;
   }

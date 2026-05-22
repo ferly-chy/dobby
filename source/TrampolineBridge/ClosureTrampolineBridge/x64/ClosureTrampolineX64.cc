@@ -10,7 +10,7 @@
 using namespace zz;
 using namespace zz::x64;
 
-ClosureTrampolineEntry *ClosureTrampoline::CreateClosureTrampolineImpl(void *carry_data, ClosureCarryHandler carry_handler,
+ClosureTrampolineEntry *ClosureTrampoline::CreateClosureTrampolineImpl(void *carry_data, void *carry_handler,
                                                                        ClosureCarryKind carry_kind) {
   ClosureTrampolineEntry *tramp_entry = nullptr;
   tramp_entry = new ClosureTrampolineEntry;
@@ -34,9 +34,14 @@ ClosureTrampolineEntry *ClosureTrampoline::CreateClosureTrampolineImpl(void *car
 
   tramp_entry->address = tramp_mem;
   tramp_entry->size = tramp_size;
-  tramp_entry->carry_data = carry_data;
-  tramp_entry->carry_handler = carry_handler;
   tramp_entry->carry_kind = carry_kind;
+  if (carry_kind == kClosureCarryKindRouteEntry) {
+    tramp_entry->metadata.route.entry = (InterceptEntry *)carry_data;
+    tramp_entry->metadata.route.handler = (void (*)(InterceptEntry *, DobbyRegisterContext *))carry_handler;
+  } else {
+    tramp_entry->metadata.user.data = carry_data;
+    tramp_entry->metadata.user.handler = (void (*)(void *, DobbyRegisterContext *))carry_handler;
+  }
 
   auto closure_tramp_buffer = static_cast<CodeBufferBase *>(turbo_assembler_.GetCodeBuffer());
   auto buffer_span = closure_tramp_buffer->GetBuffer();

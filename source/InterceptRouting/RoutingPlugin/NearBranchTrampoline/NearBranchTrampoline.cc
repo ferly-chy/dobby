@@ -29,14 +29,14 @@ int NearBranchTrampolinePlugin::PredefinedTrampolineSize() {
 #endif
 }
 #endif
+extern std::unique_ptr<CodeBufferBase> GenerateNearTrampolineBuffer(InterceptRouting *routing, addr_t from, addr_t to);
 
-extern CodeBufferBase *GenerateNearTrampolineBuffer(InterceptRouting *routing, addr_t from, addr_t to);
 bool NearBranchTrampolinePlugin::GenerateTrampolineBuffer(InterceptRouting *routing, addr_t src, addr_t dst) {
-  CodeBufferBase *trampoline_buffer;
+  std::unique_ptr<CodeBufferBase> trampoline_buffer;
   trampoline_buffer = GenerateNearTrampolineBuffer(routing, src, dst);
   if (trampoline_buffer == NULL)
     return false;
-  routing->SetTrampolineBuffer(trampoline_buffer);
+  routing->SetTrampolineBuffer(std::move(trampoline_buffer));
   return true;
 }
 

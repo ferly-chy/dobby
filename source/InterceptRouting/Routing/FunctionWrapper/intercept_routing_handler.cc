@@ -12,7 +12,7 @@
 #include "TrampolineBridge/ClosureTrampolineBridge/common_bridge_handler.h"
 
 void pre_call_forward_handler(DobbyRegisterContext *ctx, InterceptEntry *entry) {
-  FunctionWrapperRouting *routing = (FunctionWrapperRouting *)entry->routing;
+  FunctionWrapperRouting *routing = (FunctionWrapperRouting *)entry->routing.get();
 
   StackFrame *stackframe = new StackFrame();
   // create stack frame as common variable between pre_call and post_call
@@ -37,7 +37,7 @@ void pre_call_forward_handler(DobbyRegisterContext *ctx, InterceptEntry *entry) 
 }
 
 void post_call_forward_handler(DobbyRegisterContext *ctx, InterceptEntry *entry) {
-  FunctionWrapperRouting *routing = (FunctionWrapperRouting *)entry->routing;
+  FunctionWrapperRouting *routing = (FunctionWrapperRouting *)entry->routing.get();
 
   // pop stack frame as common variable between pre_call and post_call
   StackFrame *stackframe = ThreadSupport::PopStackFrame();
@@ -56,9 +56,8 @@ void post_call_forward_handler(DobbyRegisterContext *ctx, InterceptEntry *entry)
 }
 
 // run the user handler **before run the origin-instructions(which have been relocated)**
-void prologue_routing_dispatch(void *carry_data, DobbyRegisterContext *ctx) {
+void prologue_routing_dispatch(InterceptEntry *entry, DobbyRegisterContext *ctx) {
   DEBUG_LOG("Catch prologue dispatch");
-  auto *entry = static_cast<InterceptEntry *>(carry_data);
   if (entry == nullptr) {
     return;
   }
@@ -67,9 +66,8 @@ void prologue_routing_dispatch(void *carry_data, DobbyRegisterContext *ctx) {
 }
 
 // run the user handler **before the function return** by replace the lr register
-void epilogue_routing_dispatch(void *carry_data, DobbyRegisterContext *ctx) {
+void epilogue_routing_dispatch(InterceptEntry *entry, DobbyRegisterContext *ctx) {
   DEBUG_LOG("Catch epilogue dispatch");
-  auto *entry = static_cast<InterceptEntry *>(carry_data);
   if (entry == nullptr) {
     return;
   }

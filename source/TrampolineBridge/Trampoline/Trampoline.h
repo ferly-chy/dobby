@@ -2,4 +2,4 @@
 
 #include "MemoryAllocator/AssemblyCodeBuilder.h"
 
-CodeBufferBase *GenerateNormalTrampolineBuffer(addr_t from, addr_t to);
+std::unique_ptr<CodeBufferBase> GenerateNormalTrampolineBuffer(addr_t from, addr_t to);

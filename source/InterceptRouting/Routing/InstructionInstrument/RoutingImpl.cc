@@ -8,8 +8,7 @@
 
 // create closure trampoline jump to prologue_routing_dispatch with the `entry_` data
 void InstructionInstrumentRouting::BuildRouting() {
-  auto closure_trampoline =
-      ClosureTrampoline::CreateClosureTrampoline(entry_, instrument_routing_dispatch, kClosureCarryKindRouteEntry);
+  auto closure_trampoline = ClosureTrampoline::CreateClosureTrampoline(entry_, instrument_routing_dispatch);
 
   this->SetTrampolineTarget((addr_t)closure_trampoline->address);
   DEBUG_LOG("[closure trampoline] closure trampoline: {:p}, data: {:p}", (void *)closure_trampoline->address, (void *)entry_);

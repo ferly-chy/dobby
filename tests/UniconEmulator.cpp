@@ -2,6 +2,8 @@
 #include "PlatformUnifiedInterface/MemoryAllocator.h"
 #include "InstructionRelocation/InstructionRelocation.h"
 
+#include <inttypes.h>
+
 // align
 #ifndef ALIGN
 #define ALIGN ALIGN_FLOOR
@@ -53,9 +55,10 @@ void CapstoneDisassembler::disassemble(uintptr_t addr, char *buffer, size_t buff
   for (size_t i = 0; i < count; ++i) {
     auto &insn = insns[i];
     if (arch_ == "thumb") {
-      printf("%s %p: %s %s // thumb-%d\n", "-", insn.address, insn.mnemonic, insn.op_str, insn.size / 2);
+      printf("%s 0x%" PRIx64 ": %s %s // thumb-%d\n", "-", static_cast<uint64_t>(insn.address), insn.mnemonic, insn.op_str,
+             insn.size / 2);
     } else {
-      printf("%s %p: %s %s\n", "-", insn.address, insn.mnemonic, insn.op_str);
+      printf("%s 0x%" PRIx64 ": %s %s\n", "-", static_cast<uint64_t>(insn.address), insn.mnemonic, insn.op_str);
     }
   }
   cs_free(insns, count);
@@ -63,6 +66,9 @@ void CapstoneDisassembler::disassemble(uintptr_t addr, char *buffer, size_t buff
 
 static void hook_trace_insn(uc_engine *uc, uint64_t address, uint32_t size, void *user_data) {
   auto emu = (UniconEmulator *)user_data;
+  if (!emu->shouldTraceInstructions()) {
+    return;
+  }
 
   uc_err err;
   char insn_bytes[16];
@@ -82,8 +88,11 @@ static void hook_trace_insn(uc_engine *uc, uint64_t address, uint32_t size, void
 }
 
 static void hook_unmapped(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64_t value, void *user_data) {
-  printf(">>> Unmapped memory access at %p, data size = %p, data value = %p\n", address, size, value);
   auto emu = (UniconEmulator *)user_data;
+  if (emu->isVerbose()) {
+    printf(">>> Unmapped memory access at 0x%" PRIx64 ", data size = %d, data value = 0x%" PRIx64 "\n",
+           static_cast<uint64_t>(address), size, static_cast<uint64_t>(value));
+  }
   emu->setUnmappedAddr(address);
   emu->stop();
 }
@@ -94,7 +103,7 @@ void dump_regions(uc_engine *uc) {
   uc_mem_regions(uc, &regions, &region_count);
   for (int i = 0; i < region_count; ++i) {
     auto &region = regions[i];
-    printf("region: %p - %p\n", region.begin, region.end);
+    printf("region: 0x%" PRIx64 " - 0x%" PRIx64 "\n", static_cast<uint64_t>(region.begin), static_cast<uint64_t>(region.end));
   }
 }
 
@@ -154,7 +163,16 @@ void UniconEmulator::start(uintptr_t addr, uintptr_t end) {
 void UniconEmulator::emulate(uintptr_t addr, uintptr_t end, char *buffer, size_t buffer_size) {
   uc_err err;
   mapMemory(addr, buffer, buffer_size);
-  writeRegister(UC_ARM_REG_PC, (void *)addr);
+
+  if (arch_ == "arm" || arch_ == "thumb") {
+    writeRegister(UC_ARM_REG_PC, (void *)addr);
+  } else if (arch_ == "arm64") {
+    writeRegister(UC_ARM64_REG_PC, (void *)addr);
+  } else if (arch_ == "x86_64") {
+    writeRegister(UC_X86_REG_RIP, (void *)addr);
+  } else if (arch_ == "x86") {
+    writeRegister(UC_X86_REG_EIP, (void *)addr);
+  }
 
   if (end == 0)
     end = addr + buffer_size;
@@ -169,6 +187,10 @@ void check_insn_relo(char *buffer, size_t buffer_size, bool check_fault_addr, in
                      void (^callback)(UniconEmulator *orig, UniconEmulator *relo), uintptr_t relo_stop_size) {
   auto *orig_ue = new UniconEmulator(g_arch);
   auto *relo_ue = new UniconEmulator(g_arch);
+  orig_ue->setVerbose(false);
+  relo_ue->setVerbose(false);
+  orig_ue->setTraceInstructions(false);
+  relo_ue->setTraceInstructions(false);
 
   addr_t orig_addr = 0x100014000;
   addr_t relocate_addr = 0x100024000;

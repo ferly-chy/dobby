@@ -1,14 +1,6 @@
 #include "ElfSymbolResolver.h"
 
-#include <elf.h>
-#include <link.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <cstring>
-#include <memory>
-
+#include <elfio/elfio.hpp>
 #include "logging/logging.h"
 
 #define LOG_TAG "ElfSymbolResolver"
@@ -16,85 +8,28 @@
 namespace dobby {
 
 struct ElfSymbolResolver::Context {
-    ElfW(Sym) * symtab = nullptr;
-    const char *strtab = nullptr;
-    size_t sym_count = 0;
-
-    ElfW(Sym) * dynsymtab = nullptr;
-    const char *dynstrtab = nullptr;
-    size_t dynsym_count = 0;
+    ELFIO::elfio reader;
+    uintptr_t link_vaddr = 0;
 };
 
 ElfSymbolResolver::ElfSymbolResolver(const std::string &library_path) : path_(library_path), ctx_(std::make_unique<Context>()) {
 }
 
-ElfSymbolResolver::~ElfSymbolResolver() {
-    if (mmap_addr_) {
-        munmap(mmap_addr_, mmap_size_);
-    }
-}
+ElfSymbolResolver::~ElfSymbolResolver() = default;
 
 bool ElfSymbolResolver::Initialize() {
     if (initialized_) return true;
 
-    int fd = open(path_.c_str(), O_RDONLY);
-    if (fd < 0) {
-        ERROR_LOG("Failed to open library: {}", path_);
+    if (!ctx_->reader.load(path_)) {
+        ERROR_LOG("Failed to load ELF: {}", path_);
         return false;
     }
 
-    struct stat s;
-    if (fstat(fd, &s) != 0) {
-        close(fd);
-        return false;
-    }
-    mmap_size_ = s.st_size;
-
-    mmap_addr_ = mmap(nullptr, mmap_size_, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
-
-    if (mmap_addr_ == MAP_FAILED) {
-        mmap_addr_ = nullptr;
-        ERROR_LOG("Failed to mmap library: {}", path_);
-        return false;
-    }
-
-    auto *ehdr = reinterpret_cast<ElfW(Ehdr) *>(mmap_addr_);
-    if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
-        ERROR_LOG("Invalid ELF header: {}", path_);
-        return false;
-    }
-
-    uintptr_t ehdr_addr = reinterpret_cast<uintptr_t>(ehdr);
-
-    // Handle load bias from program headers
-    auto *phdr = reinterpret_cast<ElfW(Phdr) *>(ehdr_addr + ehdr->e_phoff);
-    for (size_t i = 0; i < ehdr->e_phnum; i++) {
-        if (phdr[i].p_type == PT_LOAD) {
-            load_bias_ = ehdr_addr - (phdr[i].p_vaddr - phdr[i].p_offset);
+    // Find link_vaddr from the first PT_LOAD segment
+    for (int i = 0; i < ctx_->reader.segments.size(); ++i) {
+        if (ctx_->reader.segments[i]->get_type() == ELFIO::PT_LOAD) {
+            ctx_->link_vaddr = ctx_->reader.segments[i]->get_virtual_address();
             break;
-        } else if (phdr[i].p_type == PT_PHDR) {
-            load_bias_ = reinterpret_cast<uintptr_t>(phdr) - phdr[i].p_vaddr;
-            break;
-        }
-    }
-
-    // Handle sections to find symbol tables
-    auto *shdr = reinterpret_cast<ElfW(Shdr) *>(ehdr_addr + ehdr->e_shoff);
-    auto *shstr_sh = &shdr[ehdr->e_shstrndx];
-    const char *shstrtab = reinterpret_cast<const char *>(ehdr_addr + shstr_sh->sh_offset);
-
-    for (size_t i = 0; i < ehdr->e_shnum; i++) {
-        if (shdr[i].sh_type == SHT_SYMTAB) {
-            ctx_->symtab = reinterpret_cast<ElfW(Sym) *>(ehdr_addr + shdr[i].sh_offset);
-            ctx_->sym_count = shdr[i].sh_size / sizeof(ElfW(Sym));
-        } else if (shdr[i].sh_type == SHT_STRTAB && strcmp(shstrtab + shdr[i].sh_name, ".strtab") == 0) {
-            ctx_->strtab = reinterpret_cast<const char *>(ehdr_addr + shdr[i].sh_offset);
-        } else if (shdr[i].sh_type == SHT_DYNSYM) {
-            ctx_->dynsymtab = reinterpret_cast<ElfW(Sym) *>(ehdr_addr + shdr[i].sh_offset);
-            ctx_->dynsym_count = shdr[i].sh_size / sizeof(ElfW(Sym));
-        } else if (shdr[i].sh_type == SHT_STRTAB && strcmp(shstrtab + shdr[i].sh_name, ".dynstr") == 0) {
-            ctx_->dynstrtab = reinterpret_cast<const char *>(ehdr_addr + shdr[i].sh_offset);
         }
     }
 
@@ -105,38 +40,49 @@ bool ElfSymbolResolver::Initialize() {
 void* ElfSymbolResolver::Resolve(const std::string &symbol_name, uintptr_t actual_load_address) {
     if (!Initialize()) return nullptr;
 
-    void* symbol_offset = nullptr;
+    uintptr_t st_value = 0;
+    bool found = false;
 
-    // Search in .symtab
-    if (ctx_->symtab && ctx_->strtab) {
-        for (size_t i = 0; i < ctx_->sym_count; ++i) {
-            ElfW(Sym) *sym = &ctx_->symtab[i];
-            if (sym->st_name != 0 && strcmp(ctx_->strtab + sym->st_name, symbol_name.c_str()) == 0) {
-                symbol_offset = reinterpret_cast<void *>(sym->st_value);
+    auto resolve_from_section = [&](const auto& section) {
+        ELFIO::symbol_section_accessor symbols(ctx_->reader, section);
+        for (int j = 0; j < symbols.get_symbols_num(); ++j) {
+            std::string name;
+            ELFIO::Elf64_Addr value;
+            ELFIO::Elf_Xword size;
+            unsigned char bind;
+            unsigned char type;
+            ELFIO::Elf_Half section_index;
+            unsigned char other;
+            if (symbols.get_symbol(j, name, value, size, bind, type, section_index, other)) {
+                if (name == symbol_name) {
+                    st_value = static_cast<uintptr_t>(value);
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    // Search in all symbol sections
+    for (int i = 0; i < ctx_->reader.sections.size(); ++i) {
+        auto section = ctx_->reader.sections[i];
+        if (section->get_type() == ELFIO::SHT_SYMTAB || section->get_type() == ELFIO::SHT_DYNSYM) {
+            if (resolve_from_section(section)) {
+                found = true;
                 break;
             }
         }
     }
 
-    // Search in .dynsym
-    if (!symbol_offset && ctx_->dynsymtab && ctx_->dynstrtab) {
-        for (size_t i = 0; i < ctx_->dynsym_count; ++i) {
-            ElfW(Sym) *sym = &ctx_->dynsymtab[i];
-            if (sym->st_name != 0 && strcmp(ctx_->dynstrtab + sym->st_name, symbol_name.c_str()) == 0) {
-                symbol_offset = reinterpret_cast<void *>(sym->st_value);
-                break;
-            }
+    if (found) {
+        if (actual_load_address) {
+            // Formula: absolute_address = actual_load_address + (st_value - link_vaddr)
+            return reinterpret_cast<void *>(actual_load_address + (st_value - ctx_->link_vaddr));
         }
+        return reinterpret_cast<void *>(st_value);
     }
 
-    if (symbol_offset && actual_load_address) {
-        // Calculate absolute address: load_address + (symbol_value - link_vaddr)
-        // link_vaddr is handled via load_bias in our calculation
-        uintptr_t file_mem = reinterpret_cast<uintptr_t>(mmap_addr_);
-        return reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(symbol_offset) + actual_load_address - (file_mem - load_bias_));
-    }
-
-    return symbol_offset;
+    return nullptr;
 }
 
 } // namespace dobby

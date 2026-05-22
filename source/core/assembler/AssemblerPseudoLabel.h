@@ -63,8 +63,8 @@ public:
     data_size_ = 0;
   }
 
-  template <typename T> static RelocLabel *withData(T value) {
-    auto label = new RelocLabel();
+  template <typename T> static std::unique_ptr<RelocLabel> withData(T value) {
+    auto label = std::make_unique<RelocLabel>();
     label->setData(value);
     return label;
   }

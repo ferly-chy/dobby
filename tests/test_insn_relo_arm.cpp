@@ -17,7 +17,6 @@ void check_insn_relo_thumb(char *buffer, size_t buffer_size, bool check_fault_ad
 }
 
 int main() {
-  log_set_level(0);
   set_global_arch("arm");
 
   // ldr r0, [pc, #-0x20]

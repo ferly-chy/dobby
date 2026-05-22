@@ -4,7 +4,13 @@
       "Bash(cmake *)",
       "Bash(python *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(qwen *)",
+      "Bash(bash *)",
+      "Bash(/data/data/com.termux/files/home/dobby/build/tests/tests/test_insn_relo_arm64)",
+      "Bash(/data/data/com.termux/files/home/dobby/build/tests/tests/test_insn_decoder_x86)",
+      "Bash(ctest *)",
+      "Bash(do *)"
     ]
   },
   "$version": 4

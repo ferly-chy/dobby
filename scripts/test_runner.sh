@@ -1,35 +1,49 @@
 #!/bin/bash
 
-# Dobby Test Runner Script
-# Digunakan untuk membangun dan menjalankan feature_test secara otomatis
+# Dobby host test runner for Termux/Linux development
+set -euo pipefail
 
-set -e
-
-# Tentukan direktori
 PROJECT_ROOT=$(pwd)
 BUILD_DIR="build/tests"
 
-echo ">>> Menyiapkan lingkungan build di $BUILD_DIR..."
-mkdir -p $BUILD_DIR
-cd $BUILD_DIR
+echo ">>> Preparing host build in $BUILD_DIR..."
+rm -rf "$BUILD_DIR"
+cmake -S "$PROJECT_ROOT" -B "$BUILD_DIR" -G Ninja \
+  -DDOBBY_BUILD_TEST=ON \
+  -DDOBBY_BUILD_EXAMPLE=OFF
 
-# Konfigurasi CMake (Membangun untuk host lokal karena kita di Termux)
-echo ">>> Mengonfigurasi proyek dengan DOBBY_BUILD_TEST=ON..."
-cmake ../.. -DDOBBY_BUILD_TEST=ON -DDOBBY_BUILD_EXAMPLE=OFF -G Ninja
+TARGETS=(test_native test_vtable)
+RELOCATION_TARGETS=()
+ARCH=$(uname -m)
+case "$ARCH" in
+  aarch64|arm64)
+    RELOCATION_TARGETS+=(test_insn_relo_arm64)
+    ;;
+  armv7l|arm)
+    RELOCATION_TARGETS+=(test_insn_relo_arm)
+    ;;
+  x86_64)
+    RELOCATION_TARGETS+=(test_insn_relo_x64)
+    ;;
+esac
+TARGETS+=("${RELOCATION_TARGETS[@]}")
 
-# Build target feature_test
-echo ">>> Membangun feature_test..."
-ninja feature_test
+echo ">>> Building test targets: ${TARGETS[*]}"
+cmake --build "$BUILD_DIR" --target "${TARGETS[@]}"
 
-# Jalankan hasil pengujian
+export LD_LIBRARY_PATH="$PROJECT_ROOT/$BUILD_DIR:${LD_LIBRARY_PATH:-}"
+
 echo ""
 echo "===================================================="
-echo "          MENJALANKAN DOBBY FEATURE TEST            "
+echo "              RUNNING DOBBY HOST TESTS              "
 echo "===================================================="
 echo ""
 
-./tests/feature_test
+for target in "${TARGETS[@]}"; do
+  echo ">>> Running $target"
+  "$BUILD_DIR/tests/$target"
+done
 
 echo ""
 echo "===================================================="
-echo ">>> Semua tes selesai dijalankan."
+echo ">>> All selected host tests completed."

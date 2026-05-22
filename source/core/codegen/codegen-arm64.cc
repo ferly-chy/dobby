@@ -12,9 +12,9 @@ void CodeGen::LiteralLdrBranch(uint64_t address) {
 #define _ turbo_assembler_->
 
   auto label = RelocLabel::withData(address);
-  turbo_assembler_->AppendRelocLabel(label);
+  turbo_assembler_->AppendRelocLabel(std::move(label));
 
-  _ Ldr(TMP_REG_0, label);
+  _ Ldr(TMP_REG_0, label.get());
   _ br(TMP_REG_0);
 
 #undef _

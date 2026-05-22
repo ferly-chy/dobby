@@ -41,20 +41,20 @@ const char *func_short_array[] = {
   static void install_hook_##name() {                                                                                  \
     void *sym_addr = DobbySymbolResolver(NULL, #name);                                                                 \
     DobbyHook(sym_addr, (dobby_func_t)fake_##name, (dobby_func_t *)&orig_##name);                          \
-    printf("install hook %s:%p:%p\n", #name, sym_addr, orig_##name);                                                   \
+    printf("install hook %s:%p:%p\n", #name, sym_addr, (void *)orig_##name);                                                   \
   }                                                                                                                    \
   fn_ret_t fake_##name(fn_args_t)
 
 install_hook(pthread_create, int, pthread_t *thread, const pthread_attr_t *attrs, void *(*start_routine)(void *),
              void *arg) {
-  INFO_LOG("pthread_create: %p", start_routine);
+  INFO_LOG("pthread_create: {:p}", (void *)start_routine);
   return orig_pthread_create(thread, attrs, start_routine, arg);
 }
 
 void common_handler(void *address, DobbyRegisterContext *ctx) {
   auto iter = func_map->find(address);
   if (iter != func_map->end()) {
-    INFO_LOG("func %s:%p invoke", iter->second, iter->first);
+    INFO_LOG("func {}:{:p} invoke", iter->second, (void *)iter->first);
   }
 }
 
@@ -69,7 +69,7 @@ __attribute__((constructor)) static void ctor() {
   for (int i = 0; i < sizeof(func_array) / sizeof(char *); ++i) {
     func = DobbySymbolResolver(NULL, func_array[i]);
     if (func == NULL) {
-      INFO_LOG("func %s not resolve", func_array[i]);
+      INFO_LOG("func {} not resolve", func_array[i]);
       continue;
     }
     func_map->insert(std::pair<void *, const char *>(func, func_array[i]));
@@ -116,12 +116,12 @@ uint64_t socket_demo_server(void *ctx) {
   const char *hello = "Hello from server";
 
   if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-    ERROR_LOG("socket failed: %s", strerror(errno));
+    ERROR_LOG("socket failed: {}", strerror(errno));
     return -1;
   }
 
   if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
-    ERROR_LOG("setsockopt: %s", strerror(errno));
+    ERROR_LOG("setsockopt: {}", strerror(errno));
     return -1;
   }
 
@@ -130,20 +130,20 @@ uint64_t socket_demo_server(void *ctx) {
   address.sin_addr.s_addr = INADDR_ANY;
 
   if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-    ERROR_LOG("bind failed: %s", strerror(errno));
+    ERROR_LOG("bind failed: {}", strerror(errno));
     return -1;
   }
   if (listen(server_fd, 3) < 0) {
-    ERROR_LOG("listen failed: %s", strerror(errno));
+    ERROR_LOG("listen failed: {}", strerror(errno));
     return -1;
   }
   if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0) {
-    ERROR_LOG("accept failed: %s", strerror(errno));
+    ERROR_LOG("accept failed: {}", strerror(errno));
     return -1;
   }
 
   int ret = recv(new_socket, buffer, 1024, 0);
-  INFO_LOG("[server] %s", buffer);
+  INFO_LOG("[server] {}", buffer);
 
   send(new_socket, hello, strlen(hello), 0);
   INFO_LOG("[server] Hello message sent");
@@ -177,6 +177,6 @@ uint64_t socket_demo_client(void *ctx) {
   INFO_LOG("[client] Hello message sent");
 
   int ret = recv(sock, buffer, 1024, 0);
-  INFO_LOG("[client] %s", buffer);
+  INFO_LOG("[client] {}", buffer);
   return 0;
 }

@@ -12,7 +12,7 @@
 
 using namespace zz::arm64;
 
-CodeBufferBase *GenerateNormalTrampolineBuffer(addr_t from, addr_t to) {
+std::unique_ptr<CodeBufferBase> GenerateNormalTrampolineBuffer(addr_t from, addr_t to) {
   TurboAssembler turbo_assembler_((void *)from);
 #define _ turbo_assembler_.
 
@@ -34,8 +34,7 @@ CodeBufferBase *GenerateNormalTrampolineBuffer(addr_t from, addr_t to) {
   // Bind all labels
   turbo_assembler_.RelocBind();
 
-  auto result = turbo_assembler_.GetCodeBuffer()->Copy();
-  return result;
+  return turbo_assembler_.GetCodeBuffer()->Copy();
 }
 
 #endif

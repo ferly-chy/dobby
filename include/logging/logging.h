@@ -1,5 +1,13 @@
 #pragma once
 
+#ifndef SPDLOG_NO_EXCEPTIONS
+#define SPDLOG_NO_EXCEPTIONS
+#endif
+
+#ifndef FMT_USE_EXCEPTIONS
+#define FMT_USE_EXCEPTIONS 0
+#endif
+
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/fmt.h>
 

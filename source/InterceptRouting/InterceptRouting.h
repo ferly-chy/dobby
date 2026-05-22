@@ -10,15 +10,10 @@
 class InterceptRouting {
 public:
   explicit InterceptRouting(InterceptEntry *entry) : entry_(entry) {
-    entry_->routing = this;
-
-    origin_ = nullptr;
-    relocated_ = nullptr;
-
-    trampoline_ = nullptr;
-    trampoline_buffer_ = nullptr;
     trampoline_target_ = 0;
   }
+
+  virtual ~InterceptRouting() = default;
 
   virtual void DispatchRouting() = 0;
 
@@ -30,12 +25,12 @@ public:
 
   InterceptEntry *GetInterceptEntry();
 
-  void SetTrampolineBuffer(CodeBufferBase *buffer) {
-    trampoline_buffer_ = buffer;
+  void SetTrampolineBuffer(std::unique_ptr<CodeBufferBase> buffer) {
+    trampoline_buffer_ = std::move(buffer);
   }
 
   CodeBufferBase *GetTrampolineBuffer() {
-    return trampoline_buffer_;
+    return trampoline_buffer_.get();
   }
 
   void SetTrampolineTarget(addr_t address) {
@@ -54,11 +49,11 @@ protected:
 protected:
   InterceptEntry *entry_;
 
-  CodeMemBlock *origin_;
-  CodeMemBlock *relocated_;
+  std::unique_ptr<CodeMemBlock> origin_;
+  std::unique_ptr<CodeMemBlock> relocated_;
 
-  CodeMemBlock *trampoline_;
+  std::unique_ptr<CodeMemBlock> trampoline_;
   // trampoline buffer before active
-  CodeBufferBase *trampoline_buffer_;
+  std::unique_ptr<CodeBufferBase> trampoline_buffer_;
   addr_t trampoline_target_;
 };

@@ -1,17 +1,17 @@
 #pragma once
 
-#include "dobby/common.h"
-
 #include <vector>
 #include <span>
 #include <expected>
+
+#include "dobby/common.h"
 
 class CodeBufferBase {
 public:
   CodeBufferBase() = default;
 
 public:
-  [[nodiscard]] virtual CodeBufferBase *Copy();
+  [[nodiscard]] virtual std::unique_ptr<CodeBufferBase> Copy();
 
   void Emit8(uint8_t data);
 
@@ -43,7 +43,11 @@ public:
     EmitBuffer((const uint8_t *)&value, sizeof(value));
   }
 
-  void EmitBuffer(const uint8_t *buffer, size_t len);
+  void EmitBuffer(std::span<const uint8_t> buffer);
+
+  void EmitBuffer(const uint8_t *buffer, size_t len) {
+    EmitBuffer(std::span<const uint8_t>(buffer, len));
+  }
 
   [[nodiscard]] std::span<uint8_t> GetBuffer();
   [[nodiscard]] size_t GetBufferSize() const;

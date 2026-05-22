@@ -204,10 +204,10 @@ if (NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin)
 endif ()
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/support/cmake")
-
 include(CheckCXXCompilerFlag)
-include(JoinPaths)
+if (FMT_INSTALL)
+  include(JoinPaths)
+endif ()
 
 if (FMT_MASTER_PROJECT AND NOT DEFINED CMAKE_CXX_VISIBILITY_PRESET)
   set_verbose(CMAKE_CXX_VISIBILITY_PRESET hidden CACHE STRING
@@ -304,7 +304,7 @@ add_headers(FMT_HEADERS args.h base.h chrono.h color.h compile.h core.h format.h
 set(FMT_SOURCES src/format.cc)
 
 add_module_library(fmt src/fmt.cc FALLBACK
-                   ${FMT_SOURCES} ${FMT_HEADERS} README.md ChangeLog.md
+                   ${FMT_SOURCES} ${FMT_HEADERS}
                    IF FMT_MODULE)
 add_library(fmt::fmt ALIAS fmt)
 if (FMT_MODULE)

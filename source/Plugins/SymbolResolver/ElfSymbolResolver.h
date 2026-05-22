@@ -4,19 +4,12 @@
 #include <vector>
 #include <optional>
 #include <cstdint>
-
-#include "PlatformUtil/ProcessRuntimeUtility.h"
+#include <memory>
 
 namespace dobby {
 
 class ElfSymbolResolver {
 public:
-    struct SymbolInfo {
-        std::string name;
-        uintptr_t address;
-        size_t size;
-    };
-
     explicit ElfSymbolResolver(const std::string& library_path);
     ~ElfSymbolResolver();
 
@@ -29,12 +22,8 @@ public:
 
 private:
     bool Initialize();
-    void* ResolveInternal(const std::string& symbol_name);
 
     std::string path_;
-    void* mmap_addr_ = nullptr;
-    size_t mmap_size_ = 0;
-    uintptr_t load_bias_ = 0;
     bool initialized_ = false;
 
     // Internal ELF context data

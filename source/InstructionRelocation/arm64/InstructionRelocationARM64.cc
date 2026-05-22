@@ -180,10 +180,10 @@ int relo_relocate(relo_ctx_t *ctx, bool branch) {
       addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
 
       auto dst_label = RelocLabel::withData(dst_vmaddr);
-      _ AppendRelocLabel(dst_label);
+      _ AppendRelocLabel(std::move(dst_label));
 
       {
-        _ Ldr(TMP_REG_0, dst_label);
+        _ Ldr(TMP_REG_0, dst_label.get());
         if ((inst & UnconditionalBranchMask) == BL) {
           _ blr(TMP_REG_0);
         } else {
@@ -253,12 +253,12 @@ int relo_relocate(relo_ctx_t *ctx, bool branch) {
       }
 
       auto dst_label = RelocLabel::withData(dst_vmaddr);
-      _ AppendRelocLabel(dst_label);
+      _ AppendRelocLabel(std::move(dst_label));
 
       {
         _ Emit(branch_instr);
         {
-          _ Ldr(TMP_REG_0, dst_label);
+          _ Ldr(TMP_REG_0, dst_label.get());
           _ br(TMP_REG_0);
         }
       }
@@ -280,12 +280,12 @@ int relo_relocate(relo_ctx_t *ctx, bool branch) {
       }
 
       auto dst_label = RelocLabel::withData(dst_vmaddr);
-      _ AppendRelocLabel(dst_label);
+      _ AppendRelocLabel(std::move(dst_label));
 
       {
         _ Emit(branch_instr);
         {
-          _ Ldr(TMP_REG_0, dst_label);
+          _ Ldr(TMP_REG_0, dst_label.get());
           _ br(TMP_REG_0);
         }
       }
@@ -307,12 +307,12 @@ int relo_relocate(relo_ctx_t *ctx, bool branch) {
       }
 
       auto dst_label = RelocLabel::withData(dst_vmaddr);
-      _ AppendRelocLabel(dst_label);
+      _ AppendRelocLabel(std::move(dst_label));
 
       {
         _ Emit(branch_instr);
         {
-          _ Ldr(TMP_REG_0, dst_label);
+          _ Ldr(TMP_REG_0, dst_label.get());
           _ br(TMP_REG_0);
         }
       }

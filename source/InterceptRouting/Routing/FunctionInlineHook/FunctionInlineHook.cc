@@ -19,20 +19,22 @@ PUBLIC DobbyStatus DobbyHook(void *address, dobby_func_t replace_func, dobby_fun
     return kDobbyFailed;
   }
 
-  auto entry = new InterceptEntry(kFunctionInlineHook, (addr_t)address);
+  auto entry = std::make_unique<InterceptEntry>(kFunctionInlineHook, (addr_t)address);
+  auto entry_ptr = entry.get();
 
-  auto *routing = new FunctionInlineHookRouting(entry, replace_func);
+  auto routing = std::make_unique<FunctionInlineHookRouting>(entry_ptr, replace_func);
   routing->Prepare();
   routing->DispatchRouting();
 
   // set origin func entry with as relocated instructions
   if (origin_func) {
-    *origin_func = (dobby_func_t)entry->relocated_addr;
+    *origin_func = (dobby_func_t)entry_ptr->relocated_addr;
   }
 
   routing->Commit();
 
-  Interceptor::SharedInstance()->add(entry);
+  entry->routing = std::move(routing);
+  Interceptor::SharedInstance()->add(std::move(entry));
 
   return kDobbySuccess;
 }

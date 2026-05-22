@@ -247,6 +247,18 @@ void dobby_enable_near_branch_trampoline();
  */
 void dobby_disable_near_branch_trampoline();
 
+/**
+ * @brief Begin a hook transaction.
+ * @return kDobbySuccess on success.
+ */
+DobbyStatus DobbyTransactionBegin();
+
+/**
+ * @brief Commit a hook transaction.
+ * @return kDobbySuccess on success.
+ */
+DobbyStatus DobbyTransactionCommit();
+
 #ifdef __cplusplus
 }
 #endif

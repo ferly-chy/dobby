@@ -4,28 +4,21 @@ enable_language(ASM)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Global options for vendor libraries
 set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
 set(FMT_TEST OFF CACHE BOOL "" FORCE)
-
 set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_PIC ON CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_EXAMPLE_HO OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_TESTS_HO OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
-set(SPDLOG_USE_STD_FORMAT OFF CACHE BOOL "" FORCE)
 set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "" FORCE)
 set(SPDLOG_NO_EXCEPTIONS ON CACHE BOOL "" FORCE)
-
 set(JSON_Install OFF CACHE BOOL "" FORCE)
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
-
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(ELFIO_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(ELFIO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
+# Add vendor subdirectories
 add_subdirectory(vendor/fmt)
 add_subdirectory(vendor/spdlog)
 add_subdirectory(vendor/json)
@@ -33,11 +26,10 @@ add_subdirectory(vendor/tomlplusplus)
 add_subdirectory(vendor/elfio)
 
 include(cmake/Util.cmake)
-
 include(cmake/Macros.cmake)
 include(cmake/build_environment_check.cmake)
 include(cmake/auto_source_group.cmake)
-#include(cmake/xcode_generator_helper.cmake)
+include(CTest)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 26)
@@ -45,25 +37,15 @@ set(CMAKE_C_STANDARD 23)
 
 auto_source_group("." "auto-source-group" "\\.(cc|cpp|c|h)$")
 
-# --- options
-
+# --- options ---
 option(DOBBY_DEBUG "Enable debug logging" OFF)
-
 option(NearBranch "Enable near branch trampoline" ON)
-
 option(FullFloatingPointRegisterPack "Save and pack all floating-point registers" ON)
-
 option(Plugin.SymbolResolver "Enable symbol resolver" ON)
-
 option(Plugin.ImportTableReplace "Enable import table replace " ON)
-
 option(Plugin.Android.BionicLinkerUtil "Enable android bionic linker util" ON)
-
 option(DOBBY_BUILD_EXAMPLE "Build example" OFF)
-
 option(DOBBY_BUILD_TEST "Build test" OFF)
-
-# --- private
 option(Private.Obfuscation "Enable llvm obfuscation" OFF)
 
 if ((NOT DEFINED CMAKE_BUILD_TYPE) OR (CMAKE_BUILD_TYPE STREQUAL "Debug"))
@@ -71,12 +53,9 @@ if ((NOT DEFINED CMAKE_BUILD_TYPE) OR (CMAKE_BUILD_TYPE STREQUAL "Debug"))
 endif ()
 
 set(compile_definitions "")
-
-# for arm64, allow access q8 - q31
 if (FullFloatingPointRegisterPack)
   set(compile_definitions "${compile_definitions} -DFULL_FLOATING_POINT_REGISTER_PACK")
 endif ()
-
 if (DOBBY_DEBUG)
   set(compile_definitions "${compile_definitions} -DDOBBY_DEBUG")
 else ()
@@ -85,115 +64,70 @@ endif ()
 
 include(cmake/compiler_and_linker.cmake)
 
-message(STATUS "[Dobby] CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
-message(STATUS "[Dobby] DOBBY_DEBUG: ${DOBBY_DEBUG}")
-message(STATUS "[Dobby] NearBranch: ${NearBranch}")
-message(STATUS "[Dobby] FullFloatingPointRegisterPack: ${FullFloatingPointRegisterPack}")
-message(STATUS "[Dobby] Plugin.SymbolResolver: ${Plugin.SymbolResolver}")
-message(STATUS "[Dobby] Plugin.ImportTableReplace: ${Plugin.ImportTableReplace}")
-message(STATUS "[Dobby] Plugin.Android.BionicLinkerUtil: ${Plugin.Android.BionicLinkerUtil}")
-message(STATUS "[Dobby] DOBBY_BUILD_EXAMPLE: ${DOBBY_BUILD_EXAMPLE}")
-message(STATUS "[Dobby] DOBBY_BUILD_TEST: ${DOBBY_BUILD_TEST}")
-message(STATUS "[Dobby] Private.Obfuscation: ${Private.Obfuscation}")
-
-# ---
-
-include_directories(
-  .
-  ./include
-  ./source
-  source/dobby
-  ./builtin-plugin/SymbolResolver
-  ./vendor/fmt/include
-  ./vendor/spdlog/include
-  ./vendor/json/include
-  ./vendor/tomlplusplus/include
-  ./vendor/elfio
-)
-
-# ---
-
+# --- source files ---
 set(DOBBY_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
-  # cpu
+
+set(dobby.SOURCE_FILE_LIST
   source/core/arch/CpuFeature.cc
   source/core/arch/CpuRegister.cc
-
-  # assembler
   source/core/assembler/assembler.cc
   source/core/assembler/assembler-arm.cc
   source/core/assembler/assembler-arm64.cc
   source/core/assembler/assembler-ia32.cc
   source/core/assembler/assembler-x64.cc
-
-  # codegen
   source/core/codegen/codegen-arm.cc
   source/core/codegen/codegen-arm64.cc
   source/core/codegen/codegen-ia32.cc
   source/core/codegen/codegen-x64.cc
-
-  # memory kit
   source/MemoryAllocator/CodeBuffer/CodeBufferBase.cc
   source/MemoryAllocator/AssemblyCodeBuilder.cc
   source/MemoryAllocator/MemoryAllocator.cc
-
-  # instruction relocation
   source/InstructionRelocation/arm/InstructionRelocationARM.cc
   source/InstructionRelocation/arm64/InstructionRelocationARM64.cc
   source/InstructionRelocation/x86/InstructionRelocationX86.cc
   source/InstructionRelocation/x86/InstructionRelocationX86Shared.cc
   source/InstructionRelocation/x64/InstructionRelocationX64.cc
   source/InstructionRelocation/x86/x86_insn_decode/x86_insn_decode.c
-
-  # intercept routing
   source/InterceptRouting/InterceptRouting.cpp
-
-  # intercept routing trampoline
   source/TrampolineBridge/Trampoline/arm/trampoline_arm.cc
   source/TrampolineBridge/Trampoline/arm64/trampoline_arm64.cc
   source/TrampolineBridge/Trampoline/x86/trampoline_x86.cc
   source/TrampolineBridge/Trampoline/x64/trampoline_x64.cc
-
-  # closure trampoline bridge - arm
   source/TrampolineBridge/ClosureTrampolineBridge/common_bridge_handler.cc
   source/TrampolineBridge/ClosureTrampolineBridge/arm/helper_arm.cc
   source/TrampolineBridge/ClosureTrampolineBridge/arm/closure_bridge_arm.cc
   source/TrampolineBridge/ClosureTrampolineBridge/arm/ClosureTrampolineARM.cc
-  # closure trampoline bridge - arm64
   source/TrampolineBridge/ClosureTrampolineBridge/arm64/helper_arm64.cc
   source/TrampolineBridge/ClosureTrampolineBridge/arm64/closure_bridge_arm64.cc
   source/TrampolineBridge/ClosureTrampolineBridge/arm64/ClosureTrampolineARM64.cc
-  # closure trampoline bridge - x86
   source/TrampolineBridge/ClosureTrampolineBridge/x86/helper_x86.cc
   source/TrampolineBridge/ClosureTrampolineBridge/x86/closure_bridge_x86.cc
   source/TrampolineBridge/ClosureTrampolineBridge/x86/ClosureTrampolineX86.cc
-  # closure trampoline bridge - x64
   source/TrampolineBridge/ClosureTrampolineBridge/x64/helper_x64.cc
   source/TrampolineBridge/ClosureTrampolineBridge/x64/closure_bridge_x64.cc
   source/TrampolineBridge/ClosureTrampolineBridge/x64/ClosureTrampolineX64.cc
-
   source/InterceptRouting/Routing/InstructionInstrument/InstructionInstrument.cc
   source/InterceptRouting/Routing/InstructionInstrument/RoutingImpl.cc
   source/InterceptRouting/Routing/InstructionInstrument/instrument_routing_handler.cc
-
   source/InterceptRouting/Routing/FunctionInlineHook/FunctionInlineHook.cc
   source/InterceptRouting/Routing/FunctionInlineHook/RoutingImpl.cc
-
-  # plugin register
   source/InterceptRouting/RoutingPlugin/RoutingPlugin.cc
-
-  # main
+  source/Plugins/SymbolResolver/ElfSymbolResolver.cc
+  source/Plugins/SymbolResolver/ImportTableResolver.cc
+  source/Plugins/ApplicationEventMonitor/PosixFileMonitor.cc
+  source/Plugins/ApplicationEventMonitor/PosixSocketMonitor.cc
+  source/Plugins/ApplicationEventMonitor/DynamicLoaderMonitor.cc
+  source/Plugins/PluginManager.cc
+  source/Config/Config.cc
   source/dobby.cpp
   source/Interceptor.cpp
   source/InterceptEntry.cpp
   )
 
 if (SYSTEM.Android OR SYSTEM.Linux)
-  set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
-    source/Backend/UserMode/PlatformUtil/Android/ProcessRuntimeUtility.cc
-
+  list(APPEND dobby.SOURCE_FILE_LIST
+    source/PlatformUtil/ProcessRuntimeUtility.cc
     source/Backend/UserMode/UnifiedInterface/platform-posix.cc
-
     source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc
     source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
     )
@@ -203,47 +137,16 @@ if (PROCESSOR.X86_64 OR PROCESSOR.X86)
   set(NearBranch ON)
 endif ()
 
-# ---
-
-# ----- instrument -----
-
-if (FunctionWrapper)
-  message(FATAL_ERROR "[!] FunctionWrapper plugin is not supported")
-endif ()
-
-# ---
-
 if (NearBranch)
-  set(dobby.SOURCE_FILE_LIST ${dobby.SOURCE_FILE_LIST}
+  list(APPEND dobby.SOURCE_FILE_LIST
     source/InterceptRouting/RoutingPlugin/NearBranchTrampoline/near_trampoline_arm64.cc
     source/InterceptRouting/RoutingPlugin/NearBranchTrampoline/NearBranchTrampoline.cc
     source/MemoryAllocator/NearMemoryAllocator.cc)
 endif ()
 
-# ---
+set(dobby.HEADER_FILE_LIST include/dobby.h)
 
-if (Plugin.SymbolResolver)
-  add_subdirectory(builtin-plugin/SymbolResolver)
-  get_target_property(symbol_resolver.SOURCE_FILE_LIST dobby_symbol_resolver SOURCES)
-  set(dobby.plugin.SOURCE_FILE_LIST ${dobby.plugin.SOURCE_FILE_LIST}
-    ${symbol_resolver.SOURCE_FILE_LIST}
-    source/Plugins/ApplicationEventMonitor/PosixFileMonitor.cc
-    source/Plugins/ApplicationEventMonitor/PosixSocketMonitor.cc
-    source/Plugins/ApplicationEventMonitor/DynamicLoaderMonitor.cc
-    source/Plugins/PluginManager.cc
-    source/Config/Config.cc
-    )
-endif ()
-
-# ---
-
-set(dobby.HEADER_FILE_LIST
-  include/dobby.h
-  )
-
-# ---
-
-# add build version
+# Build version
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   execute_process(
     COMMAND git rev-parse --short --verify HEAD
@@ -257,119 +160,80 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
 endif ()
 set(DOBBY_BUILD_VERSION "Dobby${VERSION_REVISION}")
 set(compile_definitions "${compile_definitions} -D__DOBBY_BUILD_VERSION__=\"${DOBBY_BUILD_VERSION}\"")
-message(STATUS "[Dobby] ${DOBBY_BUILD_VERSION}")
 
-# ---
-
-set(SOURCE_FILE_LIST
-  ${dobby.HEADER_FILE_LIST}
-  ${dobby.SOURCE_FILE_LIST}
-  ${dobby.plugin.SOURCE_FILE_LIST}
-  )
-
+set(SOURCE_FILE_LIST ${dobby.HEADER_FILE_LIST} ${dobby.SOURCE_FILE_LIST})
 get_absolute_path_list(SOURCE_FILE_LIST SOURCE_FILE_LIST_)
 set(SOURCE_FILE_LIST ${SOURCE_FILE_LIST_})
 
-add_library(dobby SHARED
-  ${SOURCE_FILE_LIST}
-  )
-
+# --- target: dobby (SHARED) ---
+add_library(dobby SHARED ${SOURCE_FILE_LIST})
 target_compile_features(dobby PRIVATE cxx_std_26)
-
-target_link_libraries(dobby PRIVATE fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json tomlplusplus::tomlplusplus elfio::elfio ${dobby.plugin.LIBS})
-
+target_link_libraries(dobby PRIVATE fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json tomlplusplus::tomlplusplus elfio::elfio)
 target_include_directories(dobby PUBLIC
-  include
-  )
+  $<BUILD_INTERFACE:${DOBBY_DIR}/include>
+  $<BUILD_INTERFACE:${DOBBY_DIR}/source>
+  $<BUILD_INTERFACE:${DOBBY_DIR}/source/dobby>
+)
+target_include_directories(dobby SYSTEM PUBLIC
+  ${DOBBY_DIR}/vendor/fmt/include
+  ${DOBBY_DIR}/vendor/spdlog/include
+  ${DOBBY_DIR}/vendor/json/include
+  ${DOBBY_DIR}/vendor/tomlplusplus/include
+  ${DOBBY_DIR}/vendor/elfio
+)
+target_compile_definitions(dobby PUBLIC SPDLOG_NO_EXCEPTIONS SPDLOG_FMT_EXTERNAL FMT_USE_EXCEPTIONS=0)
+target_compile_definitions(dobby PRIVATE "COMPILE_DEFINITIONS ${compile_definitions}")
+if (SYSTEM.Android)
+  target_compile_definitions(dobby PRIVATE DOBBY_CMAKE_ANDROID=1)
+endif ()
 
-# ---
-
-add_library(dobby_static STATIC
-  ${SOURCE_FILE_LIST}
-  )
-
+# --- target: dobby_static (STATIC) ---
+add_library(dobby_static STATIC ${SOURCE_FILE_LIST})
 target_compile_features(dobby_static PRIVATE cxx_std_26)
-
-target_link_libraries(dobby_static PRIVATE fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json tomlplusplus::tomlplusplus elfio::elfio ${dobby.plugin.LIBS})
-
+target_link_libraries(dobby_static PRIVATE fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json tomlplusplus::tomlplusplus elfio::elfio)
 target_include_directories(dobby_static PUBLIC
-  include
-  )
+  $<BUILD_INTERFACE:${DOBBY_DIR}/include>
+  $<BUILD_INTERFACE:${DOBBY_DIR}/source>
+  $<BUILD_INTERFACE:${DOBBY_DIR}/source/dobby>
+)
+target_include_directories(dobby_static SYSTEM PUBLIC
+  ${DOBBY_DIR}/vendor/fmt/include
+  ${DOBBY_DIR}/vendor/spdlog/include
+  ${DOBBY_DIR}/vendor/json/include
+  ${DOBBY_DIR}/vendor/tomlplusplus/include
+  ${DOBBY_DIR}/vendor/elfio
+)
+target_compile_definitions(dobby_static PUBLIC SPDLOG_NO_EXCEPTIONS SPDLOG_FMT_EXTERNAL FMT_USE_EXCEPTIONS=0)
+target_compile_definitions(dobby_static PRIVATE "COMPILE_DEFINITIONS ${compile_definitions}")
+if (SYSTEM.Android)
+  target_compile_definitions(dobby_static PRIVATE DOBBY_CMAKE_ANDROID=1)
+endif ()
+set_target_properties(dobby_static PROPERTIES OUTPUT_NAME "dobby")
 
-set_target_properties(dobby_static
-  PROPERTIES OUTPUT_NAME "dobby"
-  )
-
-# --- Merge extra static libraries into libdobby.a (Static) ---
-set(EXTRA_LIBS_TO_MERGE "")
-
-# Always merge fmt for standalone static library
-list(APPEND EXTRA_LIBS_TO_MERGE $<TARGET_FILE:fmt>)
-
+# Combine static libs
+set(EXTRA_LIBS_TO_MERGE $<TARGET_FILE:fmt>)
 add_custom_command(TARGET dobby_static POST_BUILD
   COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/combine_static_libs.py ${CMAKE_AR} $<TARGET_FILE:dobby_static> ${EXTRA_LIBS_TO_MERGE}
-  COMMENT "Merging extra static libraries (fmt, keystone) into libdobby.a using python script"
+  COMMENT "Merging extra static libraries"
 )
 
-# ---
-
-set_target_properties(dobby
-  PROPERTIES
-  LINK_FLAGS "${linker_flags}"
-  COMPILE_FLAGS "${compiler_flags}"
-  )
-
-set_target_properties(dobby_static
-  PROPERTIES
-  COMPILE_FLAGS "${compiler_flags}"
-  )
-
-target_compile_definitions(dobby PRIVATE
-  SPDLOG_NO_EXCEPTIONS
-  SPDLOG_FMT_EXTERNAL
-  FMT_USE_EXCEPTIONS=0
-  "COMPILE_DEFINITIONS ${compile_definitions}"
-  )
-target_compile_definitions(dobby_static PRIVATE
-  SPDLOG_NO_EXCEPTIONS
-  SPDLOG_FMT_EXTERNAL
-  FMT_USE_EXCEPTIONS=0
-  "COMPILE_DEFINITIONS ${compile_definitions}"
-  )
-
-# ---
-
-if (Private.Obfuscation)
-  set(linker_flags "${linker_flags} -Wl,-mllvm -Wl,-obfuscator-conf=all")
-endif ()
-
-# ---
-
-if (SYSTEM.Android)
-  target_link_libraries(dobby PRIVATE log)
+# Target-specific properties
+find_library(ANDROID_LOG_LIB log)
+if (SYSTEM.Android OR ANDROID_LOG_LIB)
+  target_link_libraries(dobby PRIVATE ${ANDROID_LOG_LIB})
   if (PROCESSOR.ARM)
-    set_target_properties(dobby
-      PROPERTIES
-      ANDROID_ARM_MODE arm
-      )
-    set_target_properties(dobby_static
-      PROPERTIES
-      ANDROID_ARM_MODE arm
-      )
+    set_target_properties(dobby PROPERTIES ANDROID_ARM_MODE arm)
+    set_target_properties(dobby_static PROPERTIES ANDROID_ARM_MODE arm)
   endif ()
 endif ()
-
 if (SYSTEM.Linux)
   target_link_libraries(dobby PRIVATE dl)
 endif ()
 
-# ---
-
 if (DOBBY_BUILD_EXAMPLE)
   add_subdirectory(examples)
 endif ()
-
 if (DOBBY_BUILD_TEST)
+  enable_testing()
   add_subdirectory(tests)
 endif ()
-

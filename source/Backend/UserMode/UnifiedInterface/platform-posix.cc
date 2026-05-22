@@ -16,7 +16,7 @@
 #include "base/check_logging.h"
 #include "PlatformUnifiedInterface/platform.h"
 
-#if defined(__ANDROID__) && !defined(ANDROID_LOG_STDOUT)
+#if defined(DOBBY_CMAKE_ANDROID) && !defined(ANDROID_LOG_STDOUT)
 #define ANDROID_LOG_TAG "Dobby"
 #include <android/log.h>
 #endif
@@ -142,7 +142,7 @@ void OSPrint::Print(const char *format, ...) {
 }
 
 void OSPrint::VPrint(const char *format, va_list args) {
-#if defined(__ANDROID__) && !defined(ANDROID_LOG_STDOUT)
+#if defined(DOBBY_CMAKE_ANDROID) && !defined(ANDROID_LOG_STDOUT)
   __android_log_vprint(ANDROID_LOG_INFO, ANDROID_LOG_TAG, format, args);
 #else
   vprintf(format, args);

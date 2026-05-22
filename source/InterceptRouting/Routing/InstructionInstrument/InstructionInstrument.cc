@@ -19,14 +19,16 @@ PUBLIC DobbyStatus DobbyInstrument(void *address, dobby_instrument_callback_t pr
     return kDobbyFailed;
   }
 
-  auto entry = new InterceptEntry(kInstructionInstrument, (addr_t)address);
+  auto entry = std::make_unique<InterceptEntry>(kInstructionInstrument, (addr_t)address);
+  auto entry_ptr = entry.get();
 
-  auto routing = new InstructionInstrumentRouting(entry, pre_handler, nullptr);
+  auto routing = std::make_unique<InstructionInstrumentRouting>(entry_ptr, pre_handler, nullptr);
   routing->Prepare();
   routing->DispatchRouting();
   routing->Commit();
 
-  Interceptor::SharedInstance()->add(entry);
+  entry->routing = std::move(routing);
+  Interceptor::SharedInstance()->add(std::move(entry));
 
   return kDobbySuccess;
 }
